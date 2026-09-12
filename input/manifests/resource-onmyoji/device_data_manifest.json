@@ -1,0 +1,493 @@
+{
+  "generated_at": "2026-09-06T07:51:55.9214729+09:00",
+  "source": "/sdcard/Download/onmyoji",
+  "destination": "C:\\Users\\palla\\Documents\\resource\\OnmyojiAPK\\device_data\\onmyoji_from_phone_download",
+  "file_count": 142,
+  "total_bytes": 7454813361.0,
+  "total_gib": 6.943,
+  "major_asset_files": [
+    {
+      "file": "onmyoji\\Documents\\ExtraRes\\res.npk",
+      "size_bytes": 2658237644
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2_2402.npk",
+      "size_bytes": 2928752
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2_2402v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2_2403.npk",
+      "size_bytes": 76456
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2_2403v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2_2411.npk",
+      "size_bytes": 5580812
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2_2411v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2_2504.npk",
+      "size_bytes": 423548
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2_2504v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2_2505.npk",
+      "size_bytes": 48075628
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2_2505v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2.npk",
+      "size_bytes": 10569156
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\func2v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model1_2505.npk",
+      "size_bytes": 26556
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model1_2505v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model1.npk",
+      "size_bytes": 7796344
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model1v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_1.npk",
+      "size_bytes": 203184600
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_1v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2.npk",
+      "size_bytes": 232702316
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2310.npk",
+      "size_bytes": 125604220
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2310v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2311.npk",
+      "size_bytes": 42196292
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2311v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2312.npk",
+      "size_bytes": 51723184
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2312v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2401.npk",
+      "size_bytes": 17397160
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2401v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2402.npk",
+      "size_bytes": 49800392
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2402v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2403.npk",
+      "size_bytes": 176463628
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2403v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2405.npk",
+      "size_bytes": 95773036
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2405v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2406.npk",
+      "size_bytes": 47073264
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2406v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2407.npk",
+      "size_bytes": 149699236
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2407v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2408.npk",
+      "size_bytes": 59878844
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2408v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2409.npk",
+      "size_bytes": 94925072
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2409v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2410.npk",
+      "size_bytes": 64530320
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2410v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2411.npk",
+      "size_bytes": 121497328
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2411v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2412.npk",
+      "size_bytes": 65268688
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2412v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2501.npk",
+      "size_bytes": 65185320
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2501v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2502.npk",
+      "size_bytes": 54499848
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2502v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2503.npk",
+      "size_bytes": 25193688
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2503v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2504.npk",
+      "size_bytes": 127524172
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2504v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2505.npk",
+      "size_bytes": 966692488
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2505v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_2v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_3.npk",
+      "size_bytes": 253474844
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_3v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_4.npk",
+      "size_bytes": 250421168
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_4v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_5.npk",
+      "size_bytes": 254111052
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_5v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_6.npk",
+      "size_bytes": 259313512
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_6v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_7.npk",
+      "size_bytes": 285764344
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_7v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_8.npk",
+      "size_bytes": 163468052
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_8v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_9.npk",
+      "size_bytes": 65113940
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\model2_9v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2402.npk",
+      "size_bytes": 2221744
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2402v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2403.npk",
+      "size_bytes": 9236464
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2403v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2405.npk",
+      "size_bytes": 2493152
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2405v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2406.npk",
+      "size_bytes": 7473232
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2406v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2407.npk",
+      "size_bytes": 9505628
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2407v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2408.npk",
+      "size_bytes": 5046744
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2408v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2409.npk",
+      "size_bytes": 46279132
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2409v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2410.npk",
+      "size_bytes": 2723916
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2410v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2411.npk",
+      "size_bytes": 22900
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2411v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2501.npk",
+      "size_bytes": 2717080
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2501v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2504.npk",
+      "size_bytes": 1777516
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2504v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2505.npk",
+      "size_bytes": 39543008
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel_2505v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodel.npk",
+      "size_bytes": 66690096
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\qmodelv",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\yinyangliao_2503.npk",
+      "size_bytes": 9716
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\yinyangliao_2503v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\yinyangliao_2505.npk",
+      "size_bytes": 12557980
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\yinyangliao_2505v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\yinyangliao.npk",
+      "size_bytes": 44170724
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\yinyangliaov",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2311.npk",
+      "size_bytes": 1836508
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2311v",
+      "size_bytes": 13
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2401.npk",
+      "size_bytes": 4298424
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2401v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2407.npk",
+      "size_bytes": 6010796
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2407v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2408.npk",
+      "size_bytes": 61672
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2408v",
+      "size_bytes": 13
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2501.npk",
+      "size_bytes": 10411304
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2501v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2505.npk",
+      "size_bytes": 1093792
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu_2505v",
+      "size_bytes": 14
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwu.npk",
+      "size_bytes": 54499996
+    },
+    {
+      "file": "onmyoji\\Documents\\OptionRes\\zhaohuanwuv",
+      "size_bytes": 14
+    }
+  ],
+  "notes": [
+    "Copied through authorized ADB from shared storage.",
+    "This copy contains ExtraRes and OptionRes payloads.",
+    "The source shared folder did not yet contain root res.npk, tex.npk, or script.npk at verification time.",
+    "SHA-256 hashes for all 60 NPK files and both OBB files are recorded in reports/source_hashes.json."
+  ],
+  "sha256_manifest": "reports/source_hashes.json"
+}

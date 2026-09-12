@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-09-06T07:13:46.8276395+09:00",
+  "target": "C:\\Users\\palla\\Documents\\resource\\OnmyojiAPK",
+  "files": [
+    {
+      "file": "com-netease-onmyoji-na-251120-73997584-3a138ee7a6994205febd9999f074e6c1.apk",
+      "size_bytes": 88586126,
+      "sha256": "3779F8690F55516DBF4C07173F0F3C8EDBD179DE740A76D6A44ED8AA0A0C1751",
+      "source": "C:\\Users\\palla\\Downloads\\com-netease-onmyoji-na-251120-73997584-3a138ee7a6994205febd9999f074e6c1.apk"
+    },
+    {
+      "file": "netease-games-onmyoji.apk",
+      "size_bytes": 13210049,
+      "sha256": "2BF79D8D223F27730AE02D72DA6A2FB82C4FF3A32D0A0B5630AE3295C6F09B15",
+      "source": "C:\\Users\\palla\\Downloads\\netease-games-onmyoji.apk"
+    },
+    {
+      "file": "adb_pull_com.netease.onmyoji.na_v1.8.13\\base.apk",
+      "size_bytes": 88586125,
+      "sha256": "85954173A1D79D476FF8A2DA28CFBFA07F2B95F38BD8A7BDB8EC1AEA1C19A3B4",
+      "source": "ADB /data/app package path"
+    }
+  ],
+  "adb_status": "authorized; base APK pulled",
+  "installed_package": {
+    "package": "com.netease.onmyoji.na",
+    "version_name": "1.8.13",
+    "version_code": 251120,
+    "abi": "arm64-v8a",
+    "device_serial": "SC6TFUEMCUROYX7P",
+    "split_apk_count": 0
+  },
+  "obb": [
+    {
+      "file": "main.251120.com.netease.onmyoji.na.obb",
+      "remote": "/sdcard/Android/obb/com.netease.onmyoji.na/main.251120.com.netease.onmyoji.na.obb",
+      "size_bytes": 1980549688,
+      "status": "available_on_device_not_copied"
+    },
+    {
+      "file": "patch.251120.com.netease.onmyoji.na.obb",
+      "remote": "/sdcard/Android/obb/com.netease.onmyoji.na/patch.251120.com.netease.onmyoji.na.obb",
+      "size_bytes": 1871897703,
+      "status": "available_on_device_not_copied"
+    }
+  ],
+  "notes": [
+    "CrossDevice MTP shared storage contained no APK/XAPK/APKS/OBB.",
+    "Two existing local candidate APKs were copied without modifying originals.",
+    "The installed base APK was pulled via authorized ADB.",
+    "The installed app has two OBB asset files totaling about 3.85 GB; they remain on the device for a later asset extraction step.",
+    "No decryption, DRM bypass, or package modification was performed."
+  ],
+  "asset_data": {
+    "obb_pulled": true,
+    "obb_inventory": "obb_inventory.json",
+    "app_data_root": "device_data_access_report.json",
+    "app_data_copy_status": "blocked_by_android_external_storage_permissions"
+  },
+  "next_required_action": "Copy /Android/data/com.netease.onmyoji.na/files/netease/onmyoji to phone shared Download, then pull from CrossDevice/ADB."
+}

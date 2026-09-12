@@ -1,0 +1,152 @@
+[
+  {
+    "file": "main.251120.com.netease.onmyoji.na.obb",
+    "size_bytes": 1980549688,
+    "sha256": "414DF315BB6A0C936F6E6423F4516D07332460D1909362AD7DDC12D6C3E9FCA6",
+    "entries": [
+      {
+        "name": "main_obb_filelist.txt",
+        "size_bytes": 0
+      },
+      {
+        "name": "tex1.npk",
+        "size_bytes": 314683024
+      },
+      {
+        "name": "tex3.npk",
+        "size_bytes": 315172076
+      },
+      {
+        "name": "tex2.npk",
+        "size_bytes": 314824288
+      },
+      {
+        "name": "res1.npk",
+        "size_bytes": 308044916
+      },
+      {
+        "name": "tex5.npk",
+        "size_bytes": 314974480
+      },
+      {
+        "name": "res2.npk",
+        "size_bytes": 97633732
+      },
+      {
+        "name": "tex4.npk",
+        "size_bytes": 315215972
+      }
+    ]
+  },
+  {
+    "file": "patch.251120.com.netease.onmyoji.na.obb",
+    "size_bytes": 1871897703,
+    "sha256": "4D352707B05A519147602410812F6BFD9D22200FF81F16FBED2595B325871E2A",
+    "entries": [
+      {
+        "name": "tex11.npk",
+        "size_bytes": 16447588
+      },
+      {
+        "name": "res/",
+        "size_bytes": 0
+      },
+      {
+        "name": "res/movie/",
+        "size_bytes": 0
+      },
+      {
+        "name": "res/movie/boyazidu_cnt.mp4",
+        "size_bytes": 1133841
+      },
+      {
+        "name": "res/movie/yuhun_cnt.mp4",
+        "size_bytes": 3287512
+      },
+      {
+        "name": "res/movie/logo.mp4",
+        "size_bytes": 190613
+      },
+      {
+        "name": "res/movie/shenlezidu_cnt.mp4",
+        "size_bytes": 1486956
+      },
+      {
+        "name": "res/movie/arguide-3m_cnt.mp4",
+        "size_bytes": 3717266
+      },
+      {
+        "name": "res/movie/boyazidu_jp.mp4",
+        "size_bytes": 1061109
+      },
+      {
+        "name": "res/movie/secret_skin_xuzuo_zidu_jp.mp4",
+        "size_bytes": 3354783
+      },
+      {
+        "name": "res/movie/shigongshanfengnew.mp4",
+        "size_bytes": 4496584
+      },
+      {
+        "name": "res/movie/arguide-3m_jp.mp4",
+        "size_bytes": 3652657
+      },
+      {
+        "name": "res/movie/baiguiyexing_cnt.mp4",
+        "size_bytes": 2874433
+      },
+      {
+        "name": "res/movie/xunyin_denglu.mp4",
+        "size_bytes": 2296836
+      },
+      {
+        "name": "res/movie/baiguiyexing_jp.mp4",
+        "size_bytes": 3333989
+      },
+      {
+        "name": "res/movie/start_cnt.mp4",
+        "size_bytes": 12059493
+      },
+      {
+        "name": "res/movie/secret_skin_xuzuo_zidu_cnt.mp4",
+        "size_bytes": 3342129
+      },
+      {
+        "name": "res/movie/shenlezidu_jp.mp4",
+        "size_bytes": 1214672
+      },
+      {
+        "name": "res/movie/yuhun_jp.mp4",
+        "size_bytes": 3179172
+      },
+      {
+        "name": "tex10.npk",
+        "size_bytes": 314794212
+      },
+      {
+        "name": "script.npk",
+        "size_bytes": 231120740
+      },
+      {
+        "name": "tex6.npk",
+        "size_bytes": 314780840
+      },
+      {
+        "name": "tex7.npk",
+        "size_bytes": 314678016
+      },
+      {
+        "name": "tex9.npk",
+        "size_bytes": 314650436
+      },
+      {
+        "name": "tex8.npk",
+        "size_bytes": 314738280
+      },
+      {
+        "name": "patch_obb_filelist.txt",
+        "size_bytes": 1116
+      }
+    ]
+  }
+]

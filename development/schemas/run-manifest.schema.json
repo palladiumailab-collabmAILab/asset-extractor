@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/asset-extractor/run-manifest.schema.json",
+  "title": "Asset extraction run manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "created_at", "status", "tool", "profile",
+    "strict", "resume", "limits", "normalized_config", "config_sha256",
+    "resume_key", "source_unchanged", "inputs", "outputs", "entries",
+    "failures", "claims"
+  ],
+  "properties": {
+    "schema_version": {"const": 2},
+    "operation": {"enum": ["scan", "extract"]},
+    "created_at": {"type": "string", "minLength": 1},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "tool": {"$ref": "#/$defs/tool"},
+    "profile": {"type": ["string", "null"]},
+    "strict": {"type": ["boolean", "null"]},
+    "resume": {"type": "boolean"},
+    "limits": {"$ref": "#/$defs/limits"},
+    "normalized_config": {"$ref": "#/$defs/normalizedConfig"},
+    "config_sha256": {"$ref": "#/$defs/sha256"},
+    "resume_key": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "source_unchanged": {"type": ["boolean", "null"]},
+    "inputs": {"type": "array", "items": {"$ref": "#/$defs/input"}},
+    "outputs": {"$ref": "#/$defs/outputs"},
+    "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+    "failures": {"type": "array", "items": {"$ref": "#/$defs/failure"}},
+    "claims": {"type": "array", "items": {"$ref": "#/$defs/claim"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableSha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "nonnegative": {"type": "integer", "minimum": 0},
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_entries", "max_member_bytes", "max_total_bytes", "max_ratio"],
+      "properties": {
+        "max_entries": {"$ref": "#/$defs/nonnegative"},
+        "max_member_bytes": {"$ref": "#/$defs/nonnegative"},
+        "max_total_bytes": {"$ref": "#/$defs/nonnegative"},
+        "max_ratio": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "normalizedConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "strict", "limits"],
+      "properties": {
+        "profile": {"type": ["string", "null"]},
+        "strict": {"type": ["boolean", "null"]},
+        "limits": {"$ref": "#/$defs/limits"}
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path", "name", "kind", "detection", "status", "bytes", "sha256",
+        "source_sha256_before", "source_sha256_after", "source_unchanged",
+        "error", "entries"
+      ],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "name": {"type": "string"},
+        "kind": {"type": ["string", "null"]},
+        "detection": {"type": ["string", "null"]},
+        "status": {"enum": ["ok", "ready", "missing", "error", "unsupported"]},
+        "bytes": {"type": ["integer", "null"], "minimum": 0},
+        "sha256": {"$ref": "#/$defs/nullableSha256"},
+        "source_sha256_before": {"$ref": "#/$defs/nullableSha256"},
+        "source_sha256_after": {"$ref": "#/$defs/nullableSha256"},
+        "source_unchanged": {"type": ["boolean", "null"]},
+        "error": {"type": ["string", "null"]},
+        "entries": {
+          "type": ["array", "null"],
+          "items": {"$ref": "#/$defs/scanEntry"}
+        }
+      }
+    },
+    "scanEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "bytes", "compressed_bytes", "is_directory", "crc32"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "bytes": {"$ref": "#/$defs/nonnegative"},
+        "compressed_bytes": {"$ref": "#/$defs/nonnegative"},
+        "is_directory": {"type": "boolean"},
+        "crc32": {"type": "string"}
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directory", "files", "count", "committed"],
+      "properties": {
+        "directory": {"type": ["string", "null"]},
+        "files": {"type": "array", "items": {"$ref": "#/$defs/file"}},
+        "count": {"$ref": "#/$defs/nonnegative"},
+        "committed": {"type": "boolean"}
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "bytes", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "bytes": {"$ref": "#/$defs/nonnegative"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source", "path", "output_path", "kind", "status", "bytes", "sha256",
+        "index", "payload_id", "offset", "packed_bytes", "declared_unpacked_bytes",
+        "actual_read_bytes", "actual_unpacked_bytes", "bounds_checked", "size_checked",
+        "compression_flag", "encrypted"
+      ],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "output_path": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "status": {"const": "ok"},
+        "bytes": {"$ref": "#/$defs/nonnegative"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "index": {"type": ["integer", "null"], "minimum": 0},
+        "payload_id": {"type": ["integer", "null"], "minimum": 0},
+        "offset": {"type": ["integer", "null"], "minimum": 0},
+        "packed_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "declared_unpacked_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "actual_read_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "actual_unpacked_bytes": {"$ref": "#/$defs/nonnegative"},
+        "bounds_checked": {"type": "boolean"},
+        "size_checked": {"type": "boolean"},
+        "compression_flag": {"type": ["integer", "null"], "minimum": 0},
+        "encrypted": {"type": "boolean"}
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "error", "stage"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "error": {"type": "string", "minLength": 1},
+        "stage": {"type": "string", "minLength": 1}
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "certainty"],
+      "properties": {
+        "claim": {"type": "string", "minLength": 1},
+        "certainty": {"enum": ["fact", "strong_inference", "unknown"]}
+      }
+    }
+  }
+}

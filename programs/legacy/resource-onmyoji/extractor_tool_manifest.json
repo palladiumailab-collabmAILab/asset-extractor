@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-09-06T08:29:17.6111247+09:00",
+  "tool": "NeoXtractor",
+  "version": "v3.2",
+  "release_url": "https://github.com/MarcosVLl2/NeoXtractor/releases/tag/v3.2",
+  "zip": "C:\\Users\\palla\\Documents\\resource\\OnmyojiAPK\\tools\\neoxtractor-v3.2-windows.zip",
+  "zip_size_bytes": 75294467,
+  "zip_sha256": "915C500E54553A0A54A8D773AD6A91999F9A857C804B72136EC44282BD12ED4C",
+  "source_checkout": "C:\\Users\\palla\\Documents\\resource\\OnmyojiAPK\\tools\\NeoXtractor-source-v3.2",
+  "source_commit": "7b6e8d2bc696da7f812fd6922f4ababdbf6a489b",
+  "purpose": "Read NXPK/EXPK archives, decode Netease NeoX assets, identify mesh/texture entries",
+  "install_method": "Downloaded official GitHub release zip; extracted under resource/OnmyojiAPK/tools; source checkout retained",
+  "license": "No LICENSE/COPYING/NOTICE found in repository at checkout; README states educational purposes. Treat tool license as UNKNOWN pending manual verification.",
+  "config": "configs/omy_omrc.json; decryption_key=150",
+  "limitations": [
+    "GUI release; custom Python script uses the source core for repeatable extraction.",
+    "FBX converter in source is not implemented; prefer glTF then Blender then FBX.",
+    "Game asset rights remain separate and are not inferred."
+  ]
+}

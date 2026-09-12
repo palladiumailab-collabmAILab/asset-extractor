@@ -1,0 +1,52 @@
+# Raw APK/OBB/NPK inputs are local evidence and are not GitHub artifacts.
+/input/raw/**
+!/input/raw/.gitkeep
+
+# Generated and legacy corpora can be many gigabytes.
+/output/runs/**
+!/output/runs/.gitkeep
+/output/legacy/**
+!/output/legacy/.gitkeep
+/output/work/**
+!/output/work/.gitkeep
+
+# Local vendor binaries, virtual environments, and nested checkouts.
+/programs/vendor/**
+!/programs/vendor/.gitkeep
+
+# Full historical corpora and reports remain local; curated evidence is tracked.
+/development/evidence/raw/**
+!/development/evidence/raw/.gitkeep
+**/.venv/
+**/venv/
+**/__pycache__/
+*.pyc
+*.blend
+*.glb
+*.gltf
+*.apk
+*.obb
+*.npk
+*.wpk
+*.pcbin
+*.zim
+*.mp4
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.dds
+*.ktx
+*.astc
+*.pvr
+*.so
+*.dll
+*.exe
+*.zip
+
+# Machine-specific local state.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template

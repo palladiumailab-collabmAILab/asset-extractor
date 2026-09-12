@@ -1,0 +1,116 @@
+﻿{
+    "generated_at":  "2026-09-06T17:33:22.0708355+09:00",
+    "overall":  "PASS",
+    "checks":  [
+                   {
+                       "check":  "source_hash_manifest",
+                       "status":  "PASS",
+                       "detail":  "entries=62"
+                   },
+                   {
+                       "check":  "source_files_present",
+                       "status":  "PASS",
+                       "detail":  "missing=0"
+                   },
+                   {
+                       "check":  "output_extracted\\option_models",
+                       "status":  "PASS",
+                       "detail":  "files=4138,bytes=1263765061"
+                   },
+                   {
+                       "check":  "output_extracted\\obb_assets",
+                       "status":  "PASS",
+                       "detail":  "files=108689,bytes=7872738007"
+                   },
+                   {
+                       "check":  "output_extracted\\extrares_assets",
+                       "status":  "PASS",
+                       "detail":  "files=37195,bytes=2768986659"
+                   },
+                   {
+                       "check":  "extraction_errors",
+                       "status":  "PASS",
+                       "detail":  "errors=0;manifests=22"
+                   },
+                   {
+                       "check":  "workflow_files",
+                       "status":  "PASS",
+                       "detail":  "missing="
+                   },
+                   {
+                       "check":  "blender_validation_outputs",
+                       "status":  "PASS",
+                       "detail":  "blend_files=3"
+                   },
+                   {
+                       "check":  "unreal_engine_detected",
+                       "status":  "PASS",
+                       "detail":  "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
+                   },
+                   {
+                       "check":  "obb_npk_staging",
+                       "status":  "PASS",
+                       "detail":  "files=14"
+                   },
+                   {
+                       "check":  "fixed_gltf_conversion",
+                       "status":  "PASS",
+                       "detail":  "converted=3"
+                   },
+                   {
+                       "check":  "blender_validation_report",
+                       "status":  "PASS",
+                       "detail":  "passed"
+                   },
+                   {
+                       "check":  "blender_mcp_connection",
+                       "status":  "PASS",
+                       "detail":  "localhost:9876 scene_query_and_viewport_screenshot"
+                   },
+                   {
+                       "check":  "output_extracted\\extrares_stage_refs",
+                       "status":  "PASS",
+                       "detail":  "files=91781,bytes=2847416009,scn=4,mtl=27217,gim=27365"
+                   },
+                   {
+                       "check":  "unreal_stage_import",
+                       "status":  "PASS",
+                       "detail":  "project=JadeLanternGarden,engine=5.8.2,assets=2,map=/Game/Maps/OnmyojiAPKValidation"
+                   },
+                   {
+                       "check":  "unreal_stage_map_load",
+                       "status":  "PASS",
+                       "detail":  "loaded=true; actor_count=8; player_start=true; player_character=BP_ThirdPersonCharacter_C; mesh=Yingcao; AutoPossessPlayer=Player0; GameModeBase; lighting=4"
+                   },
+                   {
+                       "check":  "unreal_runtime_map_load",
+                       "status":  "PASS",
+                       "detail":  "game-process smoke test loaded /Game/Maps/OnmyojiAPKValidation; GameMode=GameModeBase; player pawn bootstrap present; clean shutdown; fatal_errors=0"
+                   },
+                   {
+                       "check":  "unreal_runtime_log_scan",
+                       "status":  "PASS",
+                       "detail":  "latest game log has no Fatal error, Assertion failed, Ensure condition failed, Unhandled Exception, missing-package load error, or LogLinker/LogStreaming error"
+                   },
+                   {
+                       "check":  "workflow_syntax",
+                       "status":  "PASS",
+                       "detail":  "extract_nxpk.py, convert_mesh_to_gltf.py, import_apk_stage_samples.py, verify_apk_validation_map.py py_compile exit=0"
+                   },
+                   {
+                       "check":  "json_reports",
+                       "status":  "PASS",
+                       "detail":  "final_check, asset_extraction_report, apk_stage_import_report, apk_stage_map_report, and stage extraction_manifest parse successfully"
+                   },
+                   {
+                       "check":  "unreal_player_character",
+                       "status":  "PASS",
+                       "detail":  "APKStage_PlayerCharacter=BP_ThirdPersonCharacter_C; instance mesh=SK_Yingcao; AutoPossessPlayer=Player0"
+                   },
+                   {
+                       "check":  "unreal_quinn_compat_asset",
+                       "status":  "PASS",
+                       "detail":  "UE-only duplicate /Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple created from SK_Yingcao; missing-package runtime error eliminated"
+                   }
+               ]
+}

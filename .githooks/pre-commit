@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+if ! git diff --cached --check; then
+  printf '%s\n' 'pre-commit: staged diff contains whitespace errors.' >&2
+  exit 1
+fi
+
+staged_names=$(git diff --cached --name-only --diff-filter=ACMR)
+if printf '%s\n' "$staged_names" \
+  | grep -E '(^|/)(\.env($|\.)|.*\.pem$|.*\.key$|id_(rsa|ed25519)$|credentials\.json$|service-account.*\.json$)' \
+  | grep -Ev '(^|/)\.env\.(example|sample|template)$' >/dev/null 2>&1; then
+  printf '%s\n' 'pre-commit: a staged filename looks like a secret or credential file.' >&2
+  printf '%s\n' 'Review the staged files and remove secrets before committing.' >&2
+  exit 1
+fi
+
+if git diff --cached --text --unified=0 | grep -E '^\+.*-----BEGIN ([A-Z0-9 ]+ )?PRIVATE KEY-----' >/dev/null 2>&1; then
+  printf '%s\n' 'pre-commit: a private-key marker was found in added content.' >&2
+  exit 1
+fi
+
+exit 0

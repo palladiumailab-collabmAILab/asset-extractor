@@ -1,0 +1,12 @@
+{
+  "tool": "Blender",
+  "version": "5.2.1 LTS",
+  "install_method": "Official portable Windows ZIP",
+  "download_url": "https://download.blender.org/release/Blender5.2/blender-5.2.1-windows-x64.zip",
+  "zip": "tools/blender/blender-5.2.1-windows-x64.zip",
+  "zip_size_bytes": 404851964,
+  "zip_sha256": "0E631DAD7D0CAD6D5D18ABDD2E2550F6C0213215334EDA00DDBD3D22B96ECB2C",
+  "executable": "tools/blender/Blender 5.2.1/blender-5.2.1-windows-x64/blender.exe",
+  "purpose": "Headless glTF validation and later Blender-to-Unreal conversion",
+  "license": "Blender license applies; verify project distribution requirements separately"
+}

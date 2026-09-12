@@ -1,0 +1,19 @@
+{
+  "apk": "C:\\Users\\palla\\Documents\\android-apk-analysis\\apk\\kiwix-v3.14.1-installed-base.apk",
+  "apkSha256": "3aa782f421b9aa2c1dbdb7baef000fd766f2cd7adfebcad792253dcef1657ddf",
+  "apkBytes": 68754256,
+  "extractedDirectory": "C:\\Users\\palla\\Documents\\android-apk-analysis\\extracted\\kiwix-v3.14.1\\apk",
+  "assetsDirectory": "C:\\Users\\palla\\Documents\\android-apk-analysis\\extracted\\kiwix-v3.14.1\\assets",
+  "entryCount": 1136,
+  "extractedFileCount": 1063,
+  "assetFileCount": 17,
+  "assetBytes": 11480368,
+  "nativeLibraryCount": 6,
+  "dexFileCount": 1,
+  "reports": [
+    "reports/file-inventory.csv",
+    "reports/zip-entry-inventory.csv",
+    "reports/category-summary.csv",
+    "reports/extension-summary.csv"
+  ]
+}

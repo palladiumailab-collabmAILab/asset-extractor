@@ -1,0 +1,50 @@
+{
+  "checked_at": "2026-09-06T07:22:33.8414734+09:00",
+  "remote_root": "/sdcard/Android/data/com.netease.onmyoji.na/files/netease/onmyoji",
+  "remote_size_approx": "13G",
+  "status": "blocked_by_android_external_storage_permissions_for_adb_shell",
+  "pull_attempt": "directory pull stopped at protected Documents/clientconfig; asset NPK files return Permission denied",
+  "known_asset_dirs": [
+    "Documents/ExtraRes ~2.4G",
+    "Documents/OptionRes ~4.4G",
+    "Documents/res.npk ~1.6G",
+    "Documents/tex.npk ~1.8G",
+    "Documents/script.npk ~217M",
+    "Documents/res",
+    "Documents/map",
+    "Documents/movie",
+    "Documents/mulnation"
+  ],
+  "required_user_action": "Use phone file manager to copy remote_root to shared storage Download/OnmyojiData, then reconnect; ADB can pull it from shared storage.",
+  "notes": [
+    "No files were modified or deleted on the phone.",
+    "APK and both OBB archives were already pulled successfully.",
+    "Logs, orbit metadata, cache, chat, userdata, and other account-specific data are not required for 3D asset extraction."
+  ],
+  "shared_storage_check": {
+    "checked_at": "2026-09-06T07:52:08.8057996+09:00",
+    "path": "/sdcard/Download/onmyoji",
+    "status": "partial_asset_copy_available",
+    "source_size_bytes": 7454813361,
+    "copied_file_count": 142,
+    "copied_destination": "device_data/onmyoji_from_phone_download/onmyoji",
+    "asset_dirs": [
+      "Documents/ExtraRes",
+      "Documents/OptionRes"
+    ],
+    "missing_expected": [
+      "Documents/res.npk",
+      "Documents/tex.npk",
+      "Documents/script.npk"
+    ]
+  },
+  "cleanup": {
+    "completed_at": "2026-09-06T08:09:04.7270850+09:00",
+    "removed_from_device": [
+      "/sdcard/Download/onmyoji",
+      "/sdcard/Download/com.netease.onmyoji.na"
+    ],
+    "original_android_data_preserved": true,
+    "original_obb_preserved": true
+  }
+}
