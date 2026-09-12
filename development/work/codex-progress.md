@@ -106,3 +106,13 @@
   意味的復元、cloudfilesys復号は自動工程へ入れていない。
 - 入力が外部プロセスによりhash取得中に繰り返し変わる場合の完全なOSレベルsnapshotは
   標準ライブラリMVPの範囲外であり、前後hash不一致を失敗として記録する安全側に留めた。
+
+## Sol mid修正後再採点
+
+- 再レビューtask: `01a0953c-a0dc-7b42-ac9d-fb64a252c587`
+- Luna max修正task: `01a0955a-5a4b-7ba3-a506-7be0bb5a610b`
+- Sol mid再採点: **90/100（合格）**。原本不変・fail-closed・atomic run・入力前後hash・
+  manifestと実体の相互検証・外部通信なしの必須ゲートはすべてPASS。
+- 残る制限は、実APKの同名ZIPエントリを上書き規則なしで拒否すること、改変resumeを
+  自動再生成せず拒否すること、OSレベルsnapshot・split APK判定・大規模worker・
+  変換/scene復元がMVP外であること。いずれも計画の未実装拡張点として明示した。
