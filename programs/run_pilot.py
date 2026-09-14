@@ -19,6 +19,7 @@ import os
 import shutil
 import struct
 import sys
+import tempfile
 import time
 from collections import Counter
 from pathlib import Path
@@ -45,13 +46,27 @@ def sha256_json(value: Any) -> str:
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-        json.dump(value, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            json.dump(value, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def within(path: Path, root: Path) -> bool:
@@ -258,6 +273,7 @@ def run_neox(source: Path, destination: Path, index: dict[str, Any], repo: Path,
     tool_meta = tool_version(repo)
     tool_meta["config_path"] = str(config)
     tool_meta["config_sha256"] = sha256_file(config)
+    original_sys_path = sys.path.copy()
     sys.path.insert(0, str(repo))
     started = time.time()
     rows: list[dict[str, Any]] = []
@@ -290,8 +306,9 @@ def run_neox(source: Path, destination: Path, index: dict[str, Any], repo: Path,
         for base in index["entries"][len(rows):]:
             rows.append(output_row(base, "NeoXtractor", tool_meta, "failed", error=repr(exc)))
     finally:
-        if str(repo) in sys.path:
-            sys.path.remove(str(repo))
+        # Upstream imports may mutate sys.path themselves. Restore the exact
+        # caller state instead of removing only our first matching entry.
+        sys.path[:] = original_sys_path
     return {
         "tool": "NeoXtractor",
         "tool_metadata": tool_meta,
@@ -311,6 +328,7 @@ def run_neox_tools(source: Path, destination: Path, index: dict[str, Any], repo:
     shutil.copyfile(source, copied_input)
     if copied_input.stat().st_size != source.stat().st_size or sha256_file(copied_input) != sha256_file(source):
         raise RuntimeError("neox_tools input copy did not hash-match source")
+    original_sys_path = sys.path.copy()
     sys.path.insert(0, str(repo))
     old_cwd = Path.cwd()
     rows: list[dict[str, Any]] = []
@@ -345,8 +363,7 @@ def run_neox_tools(source: Path, destination: Path, index: dict[str, Any], repo:
             rows.append(output_row(base, "neox_tools", tool_meta, "failed", error=repr(exc)))
     finally:
         os.chdir(old_cwd)
-        if str(repo) in sys.path:
-            sys.path.remove(str(repo))
+        sys.path[:] = original_sys_path
     return {
         "tool": "neox_tools",
         "tool_metadata": tool_meta,
@@ -364,6 +381,7 @@ def run_maintained(source: Path, destination: Path, index: dict[str, Any], repo:
         raise RuntimeError(f"maintained parser destination already exists: {destination}")
     started = time.time()
     src_root = repo / "src"
+    original_sys_path = sys.path.copy()
     sys.path.insert(0, str(src_root))
     try:
         from asset_extractor.inventory import DEFAULT_LIMITS
@@ -395,8 +413,7 @@ def run_maintained(source: Path, destination: Path, index: dict[str, Any], repo:
             "entries": rows,
         }
     finally:
-        if str(src_root) in sys.path:
-            sys.path.remove(str(src_root))
+        sys.path[:] = original_sys_path
 
 
 def flatten_results(results: dict[str, dict[str, Any]], source: dict[str, Any], run_id: str, index: dict[str, Any]) -> list[dict[str, Any]]:
