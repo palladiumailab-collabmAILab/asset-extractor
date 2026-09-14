@@ -67,6 +67,10 @@ python programs/pull_bluestacks_snapshot.py `
 NetEase / NeoX OSS、3D＋テクスチャ、参照画像照合を一体化する改良計画は
 `development/NETEASE_ASSET_PIPELINE_PLAN.md` にあります。
 
+NeoXのKTX/ASTC等をPNGへ変換する実行環境が通常のPythonと異なる場合は、
+`prepare_textured_pilot.py --runtime-python <python.exe>`を使用します。出力作成前に
+必要モジュールを検査し、実際のPython・依存versionをmanifestへ記録します。
+
 ## 安全境界
 
 - 入力原本は変更しない。抽出物は必ず新しいrunディレクトリへ書く。

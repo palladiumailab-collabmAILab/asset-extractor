@@ -116,6 +116,23 @@ writes beside that input.
 
 ## Character / material join
 
+`prepare_textured_pilot.py` accepts `--runtime-python` when the launcher
+environment does not contain NeoXtractor's binary texture decoders. The script
+re-executes itself with that Python executable before creating the output run,
+checks `Pillow`, `numpy`, and `texture2ddecoder`, and records the resolved
+runtime, versions, and preflight result in both resolver and publication
+manifests. The delegated process still runs this maintained Python script; no
+shell conversion step is introduced.
+
+```powershell
+python programs/prepare_textured_pilot.py `
+  --run-root C:\path\to\verified-extraction-run `
+  --output C:\path\to\new-textured-run `
+  --source-tree C:\path\to\NeoXtractor `
+  --runtime-python C:\path\to\neoxtractor-venv\Scripts\python.exe `
+  --only-mesh-sha256 <mesh-sha256>
+```
+
 `build_character_asset_manifest.py` is the semantic publication step after
 `prepare_textured_pilot.py`. It accepts either the maintained six-column
 character table or the four-column table used for the Onmyoji catalog
