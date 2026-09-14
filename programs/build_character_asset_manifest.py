@@ -558,13 +558,13 @@ def _safe_count(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
-def build_manifest(
+def _assemble_manifest(
     table_path: Path,
     catalog_paths: Iterable[Path],
     output_dir: Path,
     evidence_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Build a new manifest and normalized TSV in ``output_dir``."""
+    """Assemble join results without creating or writing the publication tree."""
 
     table_path = table_path.resolve()
     catalog_paths = [path.resolve() for path in catalog_paths]
@@ -760,10 +760,7 @@ def build_manifest(
         ),
         "unresolved_records": len(unresolved),
     }
-    output_dir.mkdir(parents=False)
     normalized_path = output_dir / "normalized-character-assets.tsv"
-    manifest_path = output_dir / "character-asset-manifest.json"
-    write_tsv_new(normalized_path, normalized_rows)
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "stage": "character-asset-join",
@@ -797,7 +794,24 @@ def build_manifest(
         "characters": characters,
         "unresolved": unresolved,
     }
-    write_json_new(manifest_path, manifest)
+    return {"manifest": manifest, "normalized_rows": normalized_rows}
+
+
+def build_manifest(
+    table_path: Path,
+    catalog_paths: Iterable[Path],
+    output_dir: Path,
+    evidence_path: Path | None = None,
+) -> dict[str, Any]:
+    """Assemble a manifest, then publish its TSV and JSON atomically."""
+
+    assembled = _assemble_manifest(table_path, catalog_paths, output_dir, evidence_path)
+    manifest = assembled["manifest"]
+    normalized_rows = assembled["normalized_rows"]
+    output_path = Path(manifest["normalized_tsv"]).parent
+    output_path.mkdir(parents=False)
+    write_tsv_new(output_path / "normalized-character-assets.tsv", normalized_rows)
+    write_json_new(output_path / "character-asset-manifest.json", manifest)
     return manifest
 
 

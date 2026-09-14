@@ -3,17 +3,24 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 MODULE_PATH = PROJECT_ROOT / "programs" / "build_character_asset_manifest.py"
 SPEC = importlib.util.spec_from_file_location("build_character_asset_manifest", MODULE_PATH)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+
+from asset_extractor.schema import validate_document  # noqa: E402
+
+
+JSONSCHEMA_AVAILABLE = importlib.util.find_spec("jsonschema") is not None
 
 
 class CharacterAssetManifestTests(unittest.TestCase):
@@ -152,6 +159,29 @@ class CharacterAssetManifestTests(unittest.TestCase):
         self.assertEqual(len(manifest["unresolved"]), 1)
         self.assertTrue((output / "normalized-character-assets.tsv").is_file())
         self.assertTrue((output / "character-asset-manifest.json").is_file())
+
+    def test_assembly_is_side_effect_free_until_publication(self) -> None:
+        output = self.root / "not-yet-published"
+        assembled = MODULE._assemble_manifest(
+            self.write_table(), [self.write_catalog()], output, self.write_evidence()
+        )
+        self.assertFalse(output.exists())
+        self.assertEqual(assembled["manifest"]["stage"], "character-asset-join")
+        self.assertEqual(len(assembled["normalized_rows"]), 2)
+
+    @unittest.skipUnless(JSONSCHEMA_AVAILABLE, "jsonschema is supplied by requirements-dev.txt")
+    def test_published_manifest_matches_schema(self) -> None:
+        manifest = MODULE.build_manifest(
+            self.write_table(), [self.write_catalog()], self.root / "schema-run", self.write_evidence()
+        )
+        self.assertEqual(
+            validate_document(
+                manifest,
+                "character-asset-manifest",
+                PROJECT_ROOT / "development" / "schemas",
+            ),
+            [],
+        )
 
     def test_table_rejects_duplicate_ids(self) -> None:
         path = self.root / "duplicate.tsv"
