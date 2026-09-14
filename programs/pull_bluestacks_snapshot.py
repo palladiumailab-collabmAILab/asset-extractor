@@ -226,149 +226,169 @@ def pull_one(adb: Path, serial: str, remote_path: str, destination: Path) -> Non
             partial.unlink()
 
 
-def snapshot(
+def _capture_remote_root(
     *,
     adb: Path,
     serial: str,
-    package: str,
-    remote_roots: list[tuple[str, str]],
+    root_name: str,
+    remote_root: str,
     output: Path,
-    include_apks: bool,
-    max_files: int = DEFAULT_MAX_FILES,
-    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
-    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+    files: list[dict[str, Any]],
+    failures: list[dict[str, str]],
+    max_files: int,
+    max_file_bytes: int,
+    max_total_bytes: int,
 ) -> dict[str, Any]:
-    output = output.resolve()
-    if output.exists():
-        raise AcquisitionError(f"output directory already exists: {output}")
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.mkdir()
+    """Pull one configured remote root and append auditable file rows."""
 
-    started_at = datetime.now(timezone.utc).astimezone().isoformat()
-    failures: list[dict[str, str]] = []
-    files: list[dict[str, Any]] = []
-    roots_manifest: list[dict[str, Any]] = []
-    manifest_path = output / "snapshot-manifest.json"
+    before = remote_inventory(adb, serial, remote_root)
+    planned_bytes = sum(row["size"] for row in before.values())
+    largest = max((row["size"] for row in before.values()), default=0)
+    if len(files) + len(before) > max_files:
+        raise AcquisitionError(f"remote inventory exceeds file limit at {root_name}")
+    if largest > max_file_bytes:
+        raise AcquisitionError(f"remote inventory exceeds per-file limit at {root_name}")
+    if sum(item["bytes"] for item in files) + planned_bytes > max_total_bytes:
+        raise AcquisitionError(f"remote inventory exceeds total-byte limit at {root_name}")
 
-    try:
-        state = run_adb(adb, serial, ["get-state"]).stdout.strip()
-        if state != "device":
-            raise AcquisitionError(f"ADB target is not ready: {state!r}")
-        properties = device_properties(adb, serial)
-        adb_version = subprocess.run(
-            [str(adb), "version"], check=True, capture_output=True, text=True,
-            encoding="utf-8", errors="strict",
-        ).stdout.splitlines()[0]
-
-        for root_name, remote_root in remote_roots:
-            before = remote_inventory(adb, serial, remote_root)
-            planned_bytes = sum(row["size"] for row in before.values())
-            largest = max((row["size"] for row in before.values()), default=0)
-            if len(files) + len(before) > max_files:
-                raise AcquisitionError(f"remote inventory exceeds file limit at {root_name}")
-            if largest > max_file_bytes:
-                raise AcquisitionError(f"remote inventory exceeds per-file limit at {root_name}")
-            if sum(item["bytes"] for item in files) + planned_bytes > max_total_bytes:
-                raise AcquisitionError(f"remote inventory exceeds total-byte limit at {root_name}")
-            root_failures: list[str] = []
-            for relative in sorted(before, key=str.casefold):
-                remote_path = f"{remote_root}/{relative}"
-                local_path = output / "raw" / root_name / Path(*PurePosixPath(relative).parts)
-                try:
-                    pull_one(adb, serial, remote_path, local_path)
-                    actual_size = local_path.stat().st_size
-                    if actual_size != before[relative]["size"]:
-                        raise AcquisitionError(
-                            f"size mismatch after pull: expected {before[relative]['size']}, got {actual_size}"
-                        )
-                    digest = sha256_file(local_path)
-                    files.append({
-                        "asset_id": stable_hash({
+    root_failures: list[str] = []
+    for relative in sorted(before, key=str.casefold):
+        remote_path = f"{remote_root}/{relative}"
+        local_path = output / "raw" / root_name / Path(*PurePosixPath(relative).parts)
+        try:
+            pull_one(adb, serial, remote_path, local_path)
+            actual_size = local_path.stat().st_size
+            if actual_size != before[relative]["size"]:
+                raise AcquisitionError(
+                    f"size mismatch after pull: expected {before[relative]['size']}, got {actual_size}"
+                )
+            digest = sha256_file(local_path)
+            files.append(
+                {
+                    "asset_id": stable_hash(
+                        {
                             "serial": serial,
                             "remote_path": remote_path,
                             "size": actual_size,
                             "sha256": digest,
-                        }),
-                        "source_kind": "remote-file",
-                        "remote_root": root_name,
-                        "remote_path": remote_path,
-                        "relative_path": relative,
-                        "local_path": local_path.relative_to(output).as_posix(),
-                        "bytes": actual_size,
-                        "sha256": digest,
-                        "remote_before": before[relative],
-                        "remote_after": None,
-                        "remote_unchanged": None,
-                        "acquisition_method": "adb-pull-read-only",
-                    })
-                except (OSError, subprocess.CalledProcessError, AcquisitionError) as exc:
-                    root_failures.append(relative)
-                    failures.append({"stage": "pull", "source": remote_path, "error": str(exc)})
+                        }
+                    ),
+                    "source_kind": "remote-file",
+                    "remote_root": root_name,
+                    "remote_path": remote_path,
+                    "relative_path": relative,
+                    "local_path": local_path.relative_to(output).as_posix(),
+                    "bytes": actual_size,
+                    "sha256": digest,
+                    "remote_before": before[relative],
+                    "remote_after": None,
+                    "remote_unchanged": None,
+                    "acquisition_method": "adb-pull-read-only",
+                }
+            )
+        except (OSError, subprocess.CalledProcessError, AcquisitionError) as exc:
+            root_failures.append(relative)
+            failures.append({"stage": "pull", "source": remote_path, "error": str(exc)})
 
-            after = remote_inventory(adb, serial, remote_root)
-            for item in files:
-                if item["remote_root"] != root_name:
-                    continue
-                metadata = after.get(item["relative_path"])
-                item["remote_after"] = metadata
-                item["remote_unchanged"] = metadata == item["remote_before"]
-            roots_manifest.append({
-                "name": root_name,
-                "remote_path": remote_root,
-                "before_file_count": len(before),
-                "after_file_count": len(after),
-                "before_total_bytes": sum(row["size"] for row in before.values()),
-                "after_total_bytes": sum(row["size"] for row in after.values()),
-                "added_during_capture": sorted(set(after) - set(before), key=str.casefold),
-                "removed_during_capture": sorted(set(before) - set(after), key=str.casefold),
-                "metadata_changed_during_capture": sorted(
-                    name for name in set(before) & set(after) if before[name] != after[name]
-                ),
-                "pull_failures": root_failures,
-            })
+    after = remote_inventory(adb, serial, remote_root)
+    for item in files:
+        if item["remote_root"] != root_name:
+            continue
+        metadata = after.get(item["relative_path"])
+        item["remote_after"] = metadata
+        item["remote_unchanged"] = metadata == item["remote_before"]
+    return {
+        "name": root_name,
+        "remote_path": remote_root,
+        "before_file_count": len(before),
+        "after_file_count": len(after),
+        "before_total_bytes": sum(row["size"] for row in before.values()),
+        "after_total_bytes": sum(row["size"] for row in after.values()),
+        "added_during_capture": sorted(set(after) - set(before), key=str.casefold),
+        "removed_during_capture": sorted(set(before) - set(after), key=str.casefold),
+        "metadata_changed_during_capture": sorted(
+            name for name in set(before) & set(after) if before[name] != after[name]
+        ),
+        "pull_failures": root_failures,
+    }
 
-        if include_apks:
-            for index, remote_path in enumerate(installed_apk_paths(adb, serial, package)):
-                name = "base.apk" if index == 0 else f"split-{index:03d}.apk"
-                local_path = output / "raw" / "installed-apks" / name
-                try:
-                    before = remote_file_metadata(adb, serial, remote_path)
-                    if len(files) + 1 > max_files:
-                        raise AcquisitionError("installed APK capture exceeds file limit")
-                    if before["size"] > max_file_bytes:
-                        raise AcquisitionError("installed APK capture exceeds per-file limit")
-                    if sum(item["bytes"] for item in files) + before["size"] > max_total_bytes:
-                        raise AcquisitionError("installed APK capture exceeds total-byte limit")
-                    pull_one(adb, serial, remote_path, local_path)
-                    after = remote_file_metadata(adb, serial, remote_path)
-                    digest = sha256_file(local_path)
-                    if local_path.stat().st_size != before["size"]:
-                        raise AcquisitionError(f"APK size mismatch after pull: {remote_path}")
-                    files.append({
-                        "asset_id": stable_hash({
-                            "serial": serial, "remote_path": remote_path,
-                            "size": local_path.stat().st_size, "sha256": digest,
-                        }),
-                        "source_kind": "installed-apk",
-                        "remote_root": "installed-apks",
-                        "remote_path": remote_path,
-                        "relative_path": name,
-                        "local_path": local_path.relative_to(output).as_posix(),
-                        "bytes": local_path.stat().st_size,
-                        "sha256": digest,
-                        "remote_before": before,
-                        "remote_after": after,
-                        "remote_unchanged": before == after,
-                        "acquisition_method": "adb-pull-read-only",
-                    })
-                except (OSError, subprocess.CalledProcessError, AcquisitionError) as exc:
-                    failures.append({"stage": "pull-apk", "source": remote_path, "error": str(exc)})
 
-    except (OSError, subprocess.CalledProcessError, AcquisitionError) as exc:
-        state = locals().get("state")
-        properties = locals().get("properties", {})
-        adb_version = locals().get("adb_version")
-        failures.append({"stage": "setup-or-inventory", "source": serial, "error": str(exc)})
+def _capture_installed_apks(
+    *,
+    adb: Path,
+    serial: str,
+    package: str,
+    output: Path,
+    files: list[dict[str, Any]],
+    failures: list[dict[str, str]],
+    max_files: int,
+    max_file_bytes: int,
+    max_total_bytes: int,
+) -> None:
+    """Capture installed APK paths using the same limits and hash contract."""
+
+    for index, remote_path in enumerate(installed_apk_paths(adb, serial, package)):
+        name = "base.apk" if index == 0 else f"split-{index:03d}.apk"
+        local_path = output / "raw" / "installed-apks" / name
+        try:
+            before = remote_file_metadata(adb, serial, remote_path)
+            if len(files) + 1 > max_files:
+                raise AcquisitionError("installed APK capture exceeds file limit")
+            if before["size"] > max_file_bytes:
+                raise AcquisitionError("installed APK capture exceeds per-file limit")
+            if sum(item["bytes"] for item in files) + before["size"] > max_total_bytes:
+                raise AcquisitionError("installed APK capture exceeds total-byte limit")
+            pull_one(adb, serial, remote_path, local_path)
+            after = remote_file_metadata(adb, serial, remote_path)
+            digest = sha256_file(local_path)
+            if local_path.stat().st_size != before["size"]:
+                raise AcquisitionError(f"APK size mismatch after pull: {remote_path}")
+            files.append(
+                {
+                    "asset_id": stable_hash(
+                        {
+                            "serial": serial,
+                            "remote_path": remote_path,
+                            "size": local_path.stat().st_size,
+                            "sha256": digest,
+                        }
+                    ),
+                    "source_kind": "installed-apk",
+                    "remote_root": "installed-apks",
+                    "remote_path": remote_path,
+                    "relative_path": name,
+                    "local_path": local_path.relative_to(output).as_posix(),
+                    "bytes": local_path.stat().st_size,
+                    "sha256": digest,
+                    "remote_before": before,
+                    "remote_after": after,
+                    "remote_unchanged": before == after,
+                    "acquisition_method": "adb-pull-read-only",
+                }
+            )
+        except (OSError, subprocess.CalledProcessError, AcquisitionError) as exc:
+            failures.append({"stage": "pull-apk", "source": remote_path, "error": str(exc)})
+
+
+def _build_snapshot_manifest(
+    *,
+    started_at: str,
+    state: str | None,
+    properties: dict[str, str],
+    adb_version: str | None,
+    adb: Path,
+    serial: str,
+    package: str,
+    remote_roots: list[tuple[str, str]],
+    include_apks: bool,
+    max_files: int,
+    max_file_bytes: int,
+    max_total_bytes: int,
+    roots_manifest: list[dict[str, Any]],
+    files: list[dict[str, Any]],
+    failures: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Build the immutable snapshot record after capture has finished."""
 
     stable = all(item["remote_unchanged"] is True for item in files)
     roots_stable = all(
@@ -379,7 +399,7 @@ def snapshot(
         for root in roots_manifest
     )
     status = "complete" if files and stable and roots_stable and not failures else "incomplete"
-    manifest = {
+    return {
         "schema_version": 1,
         "operation": "capture-bluestacks-raw",
         "created_at": started_at,
@@ -406,14 +426,16 @@ def snapshot(
                 "max_file_bytes": max_file_bytes,
                 "max_total_bytes": max_total_bytes,
             },
-            "configuration_sha256": stable_hash({
-                "package": package,
-                "remote_roots": remote_roots,
-                "include_installed_apks": include_apks,
-                "max_files": max_files,
-                "max_file_bytes": max_file_bytes,
-                "max_total_bytes": max_total_bytes,
-            }),
+            "configuration_sha256": stable_hash(
+                {
+                    "package": package,
+                    "remote_roots": remote_roots,
+                    "include_installed_apks": include_apks,
+                    "max_files": max_files,
+                    "max_file_bytes": max_file_bytes,
+                    "max_total_bytes": max_total_bytes,
+                }
+            ),
         },
         "policy": {
             "remote_commands_read_only": True,
@@ -437,6 +459,96 @@ def snapshot(
             {"certainty": "scope", "text": "Only explicitly configured ADB-readable roots and optional installed APK paths were captured."},
         ],
     }
+
+
+def snapshot(
+    *,
+    adb: Path,
+    serial: str,
+    package: str,
+    remote_roots: list[tuple[str, str]],
+    output: Path,
+    include_apks: bool,
+    max_files: int = DEFAULT_MAX_FILES,
+    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+) -> dict[str, Any]:
+    """Capture configured roots and publish one auditable snapshot manifest."""
+
+    output = output.resolve()
+    if output.exists():
+        raise AcquisitionError(f"output directory already exists: {output}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.mkdir()
+
+    started_at = datetime.now(timezone.utc).astimezone().isoformat()
+    failures: list[dict[str, str]] = []
+    files: list[dict[str, Any]] = []
+    roots_manifest: list[dict[str, Any]] = []
+    manifest_path = output / "snapshot-manifest.json"
+    state: str | None = None
+    properties: dict[str, str] = {}
+    adb_version: str | None = None
+
+    try:
+        state = run_adb(adb, serial, ["get-state"]).stdout.strip()
+        if state != "device":
+            raise AcquisitionError(f"ADB target is not ready: {state!r}")
+        properties = device_properties(adb, serial)
+        adb_version = subprocess.run(
+            [str(adb), "version"], check=True, capture_output=True, text=True,
+            encoding="utf-8", errors="strict",
+        ).stdout.splitlines()[0]
+
+        for root_name, remote_root in remote_roots:
+            roots_manifest.append(
+                _capture_remote_root(
+                    adb=adb,
+                    serial=serial,
+                    root_name=root_name,
+                    remote_root=remote_root,
+                    output=output,
+                    files=files,
+                    failures=failures,
+                    max_files=max_files,
+                    max_file_bytes=max_file_bytes,
+                    max_total_bytes=max_total_bytes,
+                )
+            )
+
+        if include_apks:
+            _capture_installed_apks(
+                adb=adb,
+                serial=serial,
+                package=package,
+                output=output,
+                files=files,
+                failures=failures,
+                max_files=max_files,
+                max_file_bytes=max_file_bytes,
+                max_total_bytes=max_total_bytes,
+            )
+
+    except (OSError, subprocess.CalledProcessError, AcquisitionError) as exc:
+        failures.append({"stage": "setup-or-inventory", "source": serial, "error": str(exc)})
+
+    manifest = _build_snapshot_manifest(
+        started_at=started_at,
+        state=state,
+        properties=properties,
+        adb_version=adb_version,
+        adb=adb,
+        serial=serial,
+        package=package,
+        remote_roots=remote_roots,
+        include_apks=include_apks,
+        max_files=max_files,
+        max_file_bytes=max_file_bytes,
+        max_total_bytes=max_total_bytes,
+        roots_manifest=roots_manifest,
+        files=files,
+        failures=failures,
+    )
     write_json_atomic(manifest_path, manifest)
     return manifest
 
