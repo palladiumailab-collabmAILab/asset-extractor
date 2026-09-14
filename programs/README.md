@@ -41,6 +41,31 @@ Do not select app-private paths that require root, `run-as`, authentication
 bypass, or permission changes. Snapshot manifests follow
 `development/schemas/bluestacks-snapshot.schema.json`.
 
+## Python-only minimal restore test
+
+`run_minimal_restore_test.py` is the smallest end-to-end check for a
+BlueStacks-extracted OBB/ZIP. It selects one video and one image, streams each
+member with Python's standard-library `zipfile`, detects the container from
+magic bytes, and verifies the restored file's SHA-256, byte count, and CRC-32.
+It also hashes every source archive before and after the run. The script does
+not call an external extractor, shell, viewer, decoder, or extracted payload.
+
+Every run directory must be new. A successful run writes
+`minimal-restore-manifest.json`, whose contract is
+`development/schemas/minimal-restore-test.schema.json`.
+
+```powershell
+python programs/run_minimal_restore_test.py `
+  --source "C:\Onmyoji-Canonical-Source\obb\patch.251120.com.netease.onmyoji.na.obb" `
+  --output "C:\Onmyoji-Extraction-Workspace\runs\minimal-restore-test-20260915"
+```
+
+Use `--video-member` or `--image-member` to pin an exact archive member.
+When more than one source archive is supplied, repeat `--source` and provide
+one matching `--expected-source-sha256` per source if provenance pinning is
+required. Exit status is `0=complete`, `1=partial`, `2=failed`; a failed or
+partial run is retained with its manifest for investigation.
+
 ## Logical-name matching
 
 `asset-extractor match-assets` joins every asset type to a replaceable CSV or

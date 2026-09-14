@@ -30,8 +30,20 @@ python programs/asset_extractor.py extract input/raw/sample.zip --output output/
 python programs/asset_extractor.py extract input/raw/sample.zip --output output/runs/sample --resume
 python programs/asset_extractor.py validate-manifest output/runs/sample/run-manifest.json
 python programs/asset_extractor.py match-assets --dictionary game.csv --assets assets.json --output matches.json
+python programs/run_minimal_restore_test.py `
+  --source C:\Onmyoji-Canonical-Source\obb\patch.251120.com.netease.onmyoji.na.obb `
+  --output C:\Onmyoji-Extraction-Workspace\runs\minimal-restore-test-20260915
 python -m unittest discover -s development/tests -t .
 ```
+
+最小復元テストは、OBB/ZIPから動画1件と画像1件だけをPythonの`zipfile`で抽出し、
+拡張子ではなくmagic bytesで形式を判定します。各ファイルは読み取り中のSHA-256、
+CRC-32、復元先を再読取したSHA-256とサイズを照合し、入力原本も処理前後に再ハッシュ
+します。外部extractor、シェル、ビューア、デコーダ、抽出payloadの実行はありません。
+出力先は毎回新規でなければならず、`minimal-restore-manifest.json`に全判定を記録します。
+終了コードは`0=complete`、`1=partial`、`2=failed`です。複数のOBBを渡す場合は
+`--source`を繰り返し、期待する原本ハッシュは同じ順番で
+`--expected-source-sha256`を繰り返します。
 
 BlueStacksのADBで通常に読み取れるOnmyoji `OptionRes`を、新しいsnapshotへ
 取得する場合は次を使用します。転送前後のremote metadataと全local SHA-256は
