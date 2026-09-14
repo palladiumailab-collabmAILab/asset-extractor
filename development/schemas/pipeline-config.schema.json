@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Asset extraction pipeline configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "acquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "adb": {"type": "string"},
+        "serial": {"type": "string"},
+        "package": {"type": "string"},
+        "remote_roots": {"type": "array", "items": {"type": "string"}},
+        "include_installed_apks": {"type": "boolean"},
+        "max_files": {"type": "integer", "minimum": 1},
+        "max_file_bytes": {"type": "integer", "minimum": 1},
+        "max_total_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "dictionary": {"type": "string", "minLength": 1},
+    "backend": {"enum": ["builtin", "auto", "neoxtractor", "neox-tools"]},
+    "game_profile": {"enum": ["generic", "onmyoji"]},
+    "profile": {"enum": ["auto", "zip", "nxpk"]},
+    "best_effort": {"type": "boolean"},
+    "neoxtractor_root": {"type": "string"},
+    "neoxtractor_config": {"type": "string"},
+    "neox_tools_root": {"type": "string"},
+    "backend_python": {"type": "string"},
+    "textured": {
+      "type": "object",
+      "required": ["source_tree"],
+      "additionalProperties": false,
+      "properties": {
+        "source_tree": {"type": "string", "minLength": 1},
+        "catalog_runs": {"type": "array", "items": {"type": "string"}},
+        "allow_equivalent_material_duplicates": {"type": "boolean"},
+        "only_mesh_sha256": {"type": "array", "items": {"type": "string"}},
+        "material_overrides": {"type": "string"},
+        "runtime_python": {"type": "string"}
+      }
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {"type": "string", "minLength": 1},
+          {
+            "type": "object",
+            "required": ["path"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "candidates": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        ]
+      }
+    }
+  },
+  "oneOf": [
+    {"required": ["sources"]},
+    {"required": ["acquisition"]}
+  ]
+}

@@ -43,6 +43,11 @@ class SchemaContractTests(unittest.TestCase):
                     [],
                 )
 
+    def test_pipeline_example_matches_its_schema(self) -> None:
+        path = PROJECT_ROOT / "development" / "config" / "pipeline.example.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(validate_document(document, "pipeline-config", self.schema_root), [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,6 +34,9 @@ python programs/asset_extractor.py match-assets --dictionary game.csv --assets a
 python programs/run_minimal_restore_test.py `
   --source C:\Onmyoji-Canonical-Source\obb\patch.251120.com.netease.onmyoji.na.obb `
   --output C:\Onmyoji-Extraction-Workspace\runs\minimal-restore-test-20260915
+python programs/asset_extractor.py pipeline `
+  --config development/config/pipeline.example.json `
+  --output C:\Onmyoji-Extraction-Workspace\runs\pipeline-20260915
 python -m unittest discover -s development/tests -t .
 ```
 
@@ -105,3 +108,20 @@ NeoXのKTX/ASTC等をPNGへ変換する実行環境が通常のPythonと異な�
   backend、asset type、論理パスの有無と理由を保持する。ZIP member pathは既知の
   論理パスとして記録し、名前を持たないNXPK indexは`null`と未取得理由を記録する。
   `parent_asset_id`は後続のPNG/glTF等をraw entryへ結ぶために予約する。
+
+## Unified pipeline
+
+`pipeline`は、設定JSONを一つ渡すだけで、入力取得または指定済み原本の選択、
+抽出、共通形式判定、同名3D/画像ペアの作成、NeoXテクスチャ公開、レンダー、
+参照画像の候補スコアリングを順番に実行します。各段階は同じrunディレクトリへ
+manifestを残し、未設定・未解決・曖昧な結果は`partial`または`failed`になります。
+
+BlueStacksを使う場合は`source`の代わりに`acquisition`を設定します。これは
+PythonからADB実行ファイルを呼び出すため、ADB接続・読み取り可能なパス・
+NeoXtractorのcheckoutとその依存環境は別途必要です。参照画像の比較は候補順位を
+作るだけで、画像からUVやTex0を推測して書き換えません。
+
+設定例は[development/config/pipeline.example.json](development/config/pipeline.example.json)、
+スキーマは[development/schemas/pipeline-config.schema.json](development/schemas/pipeline-config.schema.json)
+を参照してください。OpenCVによる参照画像スコアと、定評ある3Dレンダーを使う場合は
+`requirements-vision.txt`を使用します。

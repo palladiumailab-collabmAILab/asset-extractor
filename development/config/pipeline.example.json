@@ -1,0 +1,12 @@
+{
+  "sources": ["../../input/raw/sample.zip"],
+  "dictionary": "character-dictionary.json",
+  "backend": "builtin",
+  "profile": "auto",
+  "game_profile": "onmyoji",
+  "textured": {
+    "source_tree": "../../programs/vendor/resource-onmyoji/NeoXtractor-source-v3.2",
+    "only_mesh_sha256": ["replace-with-a-64-character-mesh-sha256"]
+  },
+  "references": ["../../input/references/hairen.jpg"]
+}

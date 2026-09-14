@@ -31,6 +31,7 @@ PROGRAMS_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROGRAMS_ROOT / "src"))
 
 from asset_extractor.errors import ExtractionError  # noqa: E402
+from asset_extractor.media_probe import probe_bytes  # noqa: E402
 from asset_extractor.nxpk import find_first_nxpk_payload  # noqa: E402
 
 
@@ -151,44 +152,7 @@ def _zip_info_validation(info: zipfile.ZipInfo, limits: dict[str, int | float]) 
 
 def detect_format_bytes(sample: bytes) -> dict[str, Any]:
     """Detect a container/image format from magic bytes, not its filename."""
-
-    def result(format_id: str, family: str, mime: str, method: str) -> dict[str, Any]:
-        return {
-            "format": format_id,
-            "family": family,
-            "mime": mime,
-            "method": method,
-        }
-
-    if sample.startswith(b"\x89PNG\r\n\x1a\n"):
-        return result("png", "image", "image/png", "magic")
-    if sample.startswith(b"\xff\xd8\xff"):
-        return result("jpeg", "image", "image/jpeg", "magic")
-    if sample.startswith((b"GIF87a", b"GIF89a")):
-        return result("gif", "image", "image/gif", "magic")
-    if sample.startswith(b"BM"):
-        return result("bmp", "image", "image/bmp", "magic")
-    if sample.startswith((b"II*\x00", b"MM\x00*")):
-        return result("tiff", "image", "image/tiff", "magic")
-    if len(sample) >= 12 and sample[:4] == b"RIFF" and sample[8:12] == b"WEBP":
-        return result("webp", "image", "image/webp", "magic")
-    if sample.startswith(b"DDS "):
-        return result("dds", "image", "image/vnd-ms.dds", "magic")
-    if sample.startswith(b"\xabKTX 11\xbb\r\n\x1a\n"):
-        return result("ktx", "image", "image/ktx", "magic")
-    if sample.startswith(b"\xabKTX 20\xbb\r\n\x1a\n"):
-        return result("ktx2", "image", "image/ktx2", "magic")
-    if sample.startswith(b"PVR\x03") or sample.startswith(b"\x03\x00\x00\x00") and len(sample) >= 52:
-        return result("pvr", "image", "image/x-pvr", "magic")
-
-    if len(sample) >= 12 and sample[4:8] == b"ftyp":
-        return result("iso-bmff", "video", "video/mp4", "magic")
-    if len(sample) >= 12 and sample[:4] == b"RIFF" and sample[8:12] == b"AVI ":
-        return result("avi", "video", "video/x-msvideo", "magic")
-    if sample.startswith(b"\x1a\x45\xdf\xa3"):
-        return result("ebml", "video", "video/x-matroska", "magic")
-
-    return result("unknown", "unknown", "application/octet-stream", "unrecognised")
+    return probe_bytes(sample)
 
 
 def _member_sample(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:

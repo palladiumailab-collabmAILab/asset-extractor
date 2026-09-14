@@ -11,6 +11,7 @@ from .errors import ExtractionError
 from .inventory import DEFAULT_LIMITS, build_scan_manifest
 from .manifest import validate_manifest
 from .matcher import write_match_manifest
+from .orchestrator import run_pipeline
 from .pipeline import extract_inputs
 from .safety import assert_output_disjoint, resolve_output_path
 
@@ -65,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     match.add_argument("--dictionary", required=True, type=Path, help="CSV or JSON entity dictionary")
     match.add_argument("--assets", required=True, type=Path, help="JSON manifest containing assets[] or entries[]")
     match.add_argument("--output", required=True, type=Path, help="new match manifest path")
+
+    pipeline = subparsers.add_parser("pipeline", help="run acquisition through visual evidence in one configuration")
+    pipeline.add_argument("--config", required=True, type=Path, help="JSON pipeline configuration")
+    pipeline.add_argument("--output", required=True, type=Path, help="new pipeline run directory")
     return parser
 
 
@@ -149,6 +154,10 @@ def main(argv: list[str] | None = None) -> int:
             manifest = write_match_manifest(arguments.dictionary, arguments.assets, arguments.output)
             print(json.dumps(manifest["summary"], ensure_ascii=False, indent=2))
             return 0
+        if arguments.command == "pipeline":
+            manifest = run_pipeline(arguments.config, arguments.output)
+            print(json.dumps({"status": manifest["status"], "output": str(arguments.output.resolve())}, ensure_ascii=False))
+            return _status_exit_code(manifest["status"])
         if arguments.command == "scan":
             if arguments.report:
                 existing_inputs = [Path(item).expanduser().resolve(strict=False) for item in arguments.inputs if Path(item).expanduser().exists()]

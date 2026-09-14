@@ -23,7 +23,12 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from runtime_artifacts import sha256_bytes, sha256_file, sha256_json, write_json_atomic
+PROGRAMS_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(PROGRAMS_ROOT / "src"))
+
+from asset_extractor.media_probe import probe_file  # noqa: E402
+
+from runtime_artifacts import sha256_bytes, sha256_file, sha256_json, write_json_atomic  # noqa: E402
 
 
 MAX_ENTRY_BYTES = 512 * 1024 * 1024
@@ -162,33 +167,12 @@ def parse_index(source: Path) -> dict[str, Any]:
 
 def magic_type(path: Path) -> str:
     try:
-        with path.open("rb") as handle:
-            data = handle.read(16)
+        detected = probe_file(path, read_bytes=4096)["format"]
     except OSError:
         return "unreadable"
-    if data.startswith(b"\x89PNG"):
-        return "png"
-    if data.startswith(b"\xff\xd8\xff"):
-        return "jpg"
-    if data.startswith(b"DDS "):
-        return "dds"
-    if data.startswith(b"PVR\x03") or data.startswith(b"PVR"):
-        return "pvr"
-    if data.startswith(b"OggS"):
-        return "ogg"
-    if data.startswith(b"RIFF"):
-        return "riff"
-    if data.startswith(b"UnityFS"):
-        return "unity3d"
-    if data.startswith(bytes([0x34, 0x80, 0xC8, 0xBB])):
-        return "mesh"
-    if data.startswith(b"NXPK"):
-        return "nxpk"
-    if data.lstrip().startswith(b"<?xml"):
-        return "xml"
-    if data.lstrip().startswith(b"{"):
-        return "json"
-    return "unknown"
+    return {"jpeg": "jpg", "xml-material": "xml", "xml-animation": "xml", "xml-scene": "xml"}.get(
+        detected, detected
+    )
 
 
 def output_row(base: dict[str, Any], tool: str, tool_meta: dict[str, Any], status: str, output: Path | None = None, error: str | None = None, name: str | None = None, transforms: list[str] | None = None) -> dict[str, Any]:

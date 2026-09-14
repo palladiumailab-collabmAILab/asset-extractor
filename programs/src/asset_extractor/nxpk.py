@@ -7,34 +7,20 @@ from typing import Any, Callable
 
 from .common import file_rows, sha256_file
 from .errors import ExtractionError
+from .media_probe import probe_bytes
 
 
 def _extension(data: bytes) -> str:
-    if data.startswith(b"\x89PNG"):
-        return "png"
-    if data.startswith(b"\xff\xd8\xff"):
-        return "jpg"
-    if data.startswith(b"\xabKTX 11\xbb"):
-        return "ktx"
-    if data.startswith(b"DDS "):
-        return "dds"
-    if data.startswith(b"PVR\x03"):
-        return "pvr"
-    if data.startswith(b"OggS"):
-        return "ogg"
-    if data.startswith(b"FSB"):
-        return "fsb"
-    if data.startswith(b"RIFF"):
-        return "riff"
-    if data.startswith(b"UnityFS"):
-        return "unity3d"
-    if data.startswith(b"\x34\x80\xc8\xbb"):
-        return "mesh"
-    if data.lstrip().startswith(b"<?xml"):
-        return "xml"
-    if data.lstrip().startswith(b"{"):
-        return "json"
-    return "bin"
+    format_id = probe_bytes(data)["format"]
+    return {
+        "jpeg": "jpg",
+        "iso-bmff": "mp4",
+        "ebml": "mkv",
+        "nxpk": "bin",
+        "xml-material": "xml",
+        "xml-animation": "xml",
+        "xml-scene": "xml",
+    }.get(format_id, format_id if format_id != "unknown" else "bin")
 
 
 _KNOWN_FLAG_MASK = 0x10001

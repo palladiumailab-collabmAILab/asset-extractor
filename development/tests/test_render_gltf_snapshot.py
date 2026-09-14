@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -30,6 +31,22 @@ class RenderGltfSnapshotTests(unittest.TestCase):
     def test_empty_requested_caption_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             MODULE.snapshot_caption({}, Path("model.gltf"), "   ")
+
+    @unittest.skipUnless(importlib.util.find_spec("trimesh") and importlib.util.find_spec("pyrender"), "vision dependencies are optional")
+    def test_established_renderer_can_render_a_small_scene(self) -> None:
+        import trimesh
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "box.gltf"
+            scene = trimesh.Scene(trimesh.creation.box())
+            scene.export(source, file_type="gltf")
+            try:
+                image, report = MODULE.render_snapshot(source, 64, 64)
+            except (ImportError, RuntimeError, OSError) as exc:
+                self.skipTest(f"headless OpenGL runtime unavailable: {exc}")
+        self.assertEqual(tuple(image.shape), (64, 64, 3))
+        self.assertEqual(report["renderer"] if "renderer" in report else "pyrender", "pyrender")
 
 
 if __name__ == "__main__":

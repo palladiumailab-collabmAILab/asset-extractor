@@ -20,6 +20,8 @@ SCHEMA_NAMES = (
     "character-asset-manifest",
     "minimal-restore-test",
     "netease-backend-manifest",
+    "pipeline-config",
+    "pipeline-manifest",
     "run-manifest",
     "visual-reference-evidence",
 )

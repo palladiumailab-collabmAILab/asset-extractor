@@ -202,7 +202,10 @@ def build_match_manifest(dictionary_path: Path, asset_path: Path) -> dict[str, A
         families = {matches[index]["asset_family"] for index in indices}
         paired = "3d" in families and "image" in families
         for index in indices:
-            matches[index]["same_name_pair_status"] = "paired-3d-image" if paired else "matched-single-family"
+            is_pair_member = matches[index]["asset_family"] in {"3d", "image"}
+            matches[index]["same_name_pair_status"] = (
+                "paired-3d-image" if paired and is_pair_member else "matched-single-family"
+            )
             matches[index]["same_name_peer_indices"] = [item for item in indices if item != index]
     return {
         "schema_version": 1,
@@ -217,7 +220,7 @@ def build_match_manifest(dictionary_path: Path, asset_path: Path) -> dict[str, A
         },
         "policy": {
             "primary_rule": "assets sharing a dictionary-backed logical name belong to the same entity candidate set",
-            "pair_rule": "a 3D asset and image asset matched to the same entity are marked paired-3d-image",
+            "pair_rule": "only the matched 3D and image members are marked paired-3d-image; other asset families remain separate",
             "automatic_methods": ["exact", "normalized", "alias"],
             "heuristic_is_not_automatic": True,
         },

@@ -6,6 +6,7 @@ from typing import Any
 
 from .common import config_hash, sha256_file, tool_metadata, utc_now
 from .errors import ExtractionError
+from .media_probe import probe_file
 from .safety import validate_zip_infos
 
 
@@ -18,9 +19,8 @@ DEFAULT_LIMITS: dict[str, int | float] = {
 
 
 def detect_kind(path: Path) -> tuple[str, str]:
-    with path.open("rb") as handle:
-        header = handle.read(16)
-    if header.startswith(b"NXPK"):
+    evidence = probe_file(path, read_bytes=16)
+    if evidence["format"] == "nxpk":
         return "nxpk", "magic:NXPK"
     if zipfile.is_zipfile(path):
         suffix = path.suffix.lower()
@@ -29,7 +29,7 @@ def detect_kind(path: Path) -> tuple[str, str]:
         if suffix == ".obb":
             return "obb-zip", "zip-central-directory+suffix:.obb"
         return "zip", "zip-central-directory"
-    if header.startswith(b"PK\x03\x04"):
+    if evidence["format"] == "zip":
         return "zip", "magic:PK"
     return "unknown", "no-known-magic"
 

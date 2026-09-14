@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/asset-extractor/pipeline-manifest.schema.json",
+  "title": "Asset extraction pipeline manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "created_at", "status", "config",
+    "tool", "stages", "policy"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "operation": {"const": "asset-extraction-pipeline"},
+    "created_at": {"type": "string", "minLength": 1},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "config": {"$ref": "#/$defs/config"},
+    "tool": {"$ref": "#/$defs/tool"},
+    "stages": {
+      "type": "object",
+      "additionalProperties": {"type": "object"}
+    },
+    "policy": {"$ref": "#/$defs/policy"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_inputs_read_only", "reference_images_rank_candidates_only",
+        "ambiguous_results_remain_unresolved"
+      ],
+      "properties": {
+        "raw_inputs_read_only": {"type": "boolean"},
+        "reference_images_rank_candidates_only": {"type": "boolean"},
+        "ambiguous_results_remain_unresolved": {"type": "boolean"}
+      }
+    }
+  }
+}
