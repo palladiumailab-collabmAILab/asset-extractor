@@ -165,7 +165,15 @@
         "container_sha256": {"$ref": "#/$defs/sha256"},
         "nested_entry_index": {"type": "integer", "minimum": 0},
         "nested_payload_id": {"type": "integer", "minimum": 0}
-      }
+      },
+      "allOf": [
+        {
+          "if": {"required": ["nested"], "properties": {"nested": {"const": true}}},
+          "then": {
+            "required": ["container_member", "container_sha256", "nested_entry_index", "nested_payload_id"]
+          }
+        }
+      ]
     },
     "asset": {
       "type": "object",

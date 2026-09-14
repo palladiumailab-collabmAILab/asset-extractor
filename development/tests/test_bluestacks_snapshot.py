@@ -13,11 +13,17 @@ from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "programs"))
+sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 MODULE_PATH = PROJECT_ROOT / "programs" / "pull_bluestacks_snapshot.py"
 SPEC = importlib.util.spec_from_file_location("pull_bluestacks_snapshot", MODULE_PATH)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+
+from asset_extractor.schema import validate_document  # noqa: E402
+
+
+JSONSCHEMA_AVAILABLE = importlib.util.find_spec("jsonschema") is not None
 
 
 class BlueStacksSnapshotTests(unittest.TestCase):
@@ -92,6 +98,15 @@ class BlueStacksSnapshotTests(unittest.TestCase):
         self.assertEqual(manifest["summary"]["files"], 1)
         self.assertEqual(manifest["files"][0]["sha256"], hashlib.sha256(b"payload").hexdigest())
         self.assertTrue(manifest["files"][0]["remote_unchanged"])
+        if JSONSCHEMA_AVAILABLE:
+            self.assertEqual(
+                validate_document(
+                    manifest,
+                    "bluestacks-snapshot",
+                    PROJECT_ROOT / "development" / "schemas",
+                ),
+                [],
+            )
         self.assertEqual((output / "raw/optionres/model2_1.npk").read_bytes(), b"payload")
         saved = json.loads((output / "snapshot-manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["files"], manifest["files"])

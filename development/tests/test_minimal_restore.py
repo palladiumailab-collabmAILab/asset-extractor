@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import struct
 import sys
@@ -12,12 +13,17 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "programs"))
+sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 
 from run_minimal_restore_test import (  # noqa: E402
     MinimalRestoreError,
     detect_format_bytes,
     run_minimal_restore_test,
 )
+from asset_extractor.schema import validate_document  # noqa: E402
+
+
+JSONSCHEMA_AVAILABLE = importlib.util.find_spec("jsonschema") is not None
 
 
 PNG_FIXTURE = b"\x89PNG\r\n\x1a\nfixture-image"
@@ -88,6 +94,15 @@ class MinimalRestoreTests(unittest.TestCase):
         self.assertEqual(Path(assets["image"]["output"]).read_bytes(), image)
         self.assertTrue(all(asset["hash_match"] for asset in assets.values()))
         self.assertTrue(all(asset["format_match"] for asset in assets.values()))
+        if JSONSCHEMA_AVAILABLE:
+            self.assertEqual(
+                validate_document(
+                    manifest,
+                    "minimal-restore-test",
+                    PROJECT_ROOT / "development" / "schemas",
+                ),
+                [],
+            )
         self.assertEqual(
             json.loads((output / "minimal-restore-manifest.json").read_text(encoding="utf-8")),
             manifest,
@@ -124,6 +139,15 @@ class MinimalRestoreTests(unittest.TestCase):
         self.assertEqual(Path(assets["image"]["output"]).read_bytes(), PNG_FIXTURE)
         self.assertTrue(assets["image"]["hash_match"])
         self.assertTrue(assets["image"]["format_match"])
+        if JSONSCHEMA_AVAILABLE:
+            self.assertEqual(
+                validate_document(
+                    manifest,
+                    "minimal-restore-test",
+                    PROJECT_ROOT / "development" / "schemas",
+                ),
+                [],
+            )
         self.assertFalse(any(output.glob(".minimal-restore-nested-*.npk")))
 
 

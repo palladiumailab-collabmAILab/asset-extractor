@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import struct
@@ -21,6 +22,10 @@ from asset_extractor.errors import ExtractionError  # noqa: E402
 from asset_extractor.inventory import DEFAULT_LIMITS, inspect_zip  # noqa: E402
 from asset_extractor.manifest import validate_manifest  # noqa: E402
 from asset_extractor.pipeline import extract_inputs  # noqa: E402
+from asset_extractor.schema import validate_document  # noqa: E402
+
+
+JSONSCHEMA_AVAILABLE = importlib.util.find_spec("jsonschema") is not None
 
 
 class AssetExtractorTests(unittest.TestCase):
@@ -106,6 +111,15 @@ class AssetExtractorTests(unittest.TestCase):
         self.assertTrue(row["source_unchanged"])
         self.assertEqual(row["entries"][0]["path"], "assets/icon.txt")
         self.assertEqual(validate_manifest(manifest), [])
+        if JSONSCHEMA_AVAILABLE:
+            self.assertEqual(
+                validate_document(
+                    manifest,
+                    "run-manifest",
+                    PROJECT_ROOT / "development" / "schemas",
+                ),
+                [],
+            )
 
     def test_extract_is_non_destructive_and_manifest_is_hashable(self) -> None:
         source = self.make_zip("sample.obb", [("res/data.bin", b"payload"), ("empty/", b"")])
@@ -131,6 +145,15 @@ class AssetExtractorTests(unittest.TestCase):
         self.assertEqual(entry["asset_type"], "bin")
         self.assertIsNone(entry["parent_asset_id"])
         self.assertEqual(validate_manifest(saved, destination / "extracted"), [])
+        if JSONSCHEMA_AVAILABLE:
+            self.assertEqual(
+                validate_document(
+                    saved,
+                    "run-manifest",
+                    PROJECT_ROOT / "development" / "schemas",
+                ),
+                [],
+            )
 
     def test_asset_id_is_stable_across_fresh_output_directories(self) -> None:
         source = self.make_zip("stable.zip", [("res/model.mesh", b"same payload")])

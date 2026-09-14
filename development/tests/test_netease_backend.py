@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,11 +10,17 @@ from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 MODULE_PATH = PROJECT_ROOT / "programs" / "run_netease_backend.py"
 SPEC = importlib.util.spec_from_file_location("run_netease_backend", MODULE_PATH)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+
+from asset_extractor.schema import validate_document  # noqa: E402
+
+
+JSONSCHEMA_AVAILABLE = importlib.util.find_spec("jsonschema") is not None
 
 
 class NetEaseBackendTests(unittest.TestCase):
@@ -138,6 +146,15 @@ class NetEaseBackendTests(unittest.TestCase):
         self.assertEqual(manifest["status"], "complete")
         self.assertTrue((output / "backend-run-manifest.json").is_file())
         self.assertEqual(manifest["entries"][0]["output_path"], "raw/0000000.mesh")
+        if JSONSCHEMA_AVAILABLE:
+            self.assertEqual(
+                validate_document(
+                    json.loads((output / "backend-run-manifest.json").read_text(encoding="utf-8")),
+                    "netease-backend-manifest",
+                    PROJECT_ROOT / "development" / "schemas",
+                ),
+                [],
+            )
         self.assertFalse(any(self.root.glob(".run.partial-*")))
 
 

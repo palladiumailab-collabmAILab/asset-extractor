@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 from asset_extractor.cli import main  # noqa: E402
 from asset_extractor.errors import ExtractionError  # noqa: E402
 from asset_extractor.matcher import build_match_manifest, load_dictionary, path_tokens  # noqa: E402
+from asset_extractor.schema import validate_document  # noqa: E402
+
+
+JSONSCHEMA_AVAILABLE = importlib.util.find_spec("jsonschema") is not None
 
 
 class AssetMatcherTests(unittest.TestCase):
@@ -56,6 +61,15 @@ class AssetMatcherTests(unittest.TestCase):
         self.assertEqual(mesh["same_name_peer_indices"], [1])
         self.assertEqual(unknown["match_method"], "unmatched")
         self.assertEqual(unknown["source_asset"]["asset_id"], "unknown")
+        if JSONSCHEMA_AVAILABLE:
+            self.assertEqual(
+                validate_document(
+                    manifest,
+                    "asset-name-match",
+                    PROJECT_ROOT / "development" / "schemas",
+                ),
+                [],
+            )
 
     def test_alias_and_missing_logical_path_are_explicit(self) -> None:
         dictionary = self.write_dictionary()
