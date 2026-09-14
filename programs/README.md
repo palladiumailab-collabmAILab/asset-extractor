@@ -159,3 +159,9 @@ python programs/build_character_asset_manifest.py `
   --evidence development/config/kainin-asset-variants-20260914.json `
   --output C:\path\to\new-character-join-run
 ```
+
+`render_gltf_snapshot.py` renders a self-contained textured glTF with the
+Python/Pillow software rasterizer. Use `--title` for the evidence label; the
+renderer derives its default from the current glTF and never carries a
+character name over from another run. Existing PNG and JSON outputs are not
+overwritten.
