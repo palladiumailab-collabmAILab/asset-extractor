@@ -82,6 +82,7 @@ def _read_entries(
         if valid_24 and valid_20:
             raise ExtractionError("ambiguous NXPK header/index layout")
         if valid_24:
+            assert candidate_24 is not None
             index_offset = candidate_24
             header_size = 24
         elif valid_20:

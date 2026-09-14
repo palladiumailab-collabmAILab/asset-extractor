@@ -6,3 +6,8 @@ exclude = ["programs/legacy", "programs/vendor"]
 [tool.ruff.lint]
 select = ["E", "F"]
 ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+files = ["programs/src/asset_extractor", "programs/runtime_artifacts.py"]

@@ -44,6 +44,9 @@ jobs:
           ':(exclude)programs/vendor/**'
           | xargs -0 ruff check
 
+      - name: Run mypy type checks
+        run: mypy
+
       - name: Validate JSON-Schema contracts
         run: >-
           python scripts/validate-schemas.py

@@ -79,7 +79,7 @@ def _prepare_inputs(raw_inputs: list[str]) -> tuple[list[tuple[Path, dict[str, A
             status = "error" if path.exists() else "missing"
             row = _empty_input_row(raw, error, status)
             rows.append(row)
-            failures.append(_failure(row["path"], error, "input"))
+            failures.append(_failure(str(row["path"]), error, "input"))
     return valid, rows, failures
 
 
