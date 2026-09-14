@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/asset-extractor/netease-backend-manifest.schema.json",
+  "title": "Normalized NetEase dedicated-backend run",
+  "type": "object",
+  "required": ["schema_version", "operation", "created_at", "status", "source", "selection", "backend", "configuration_sha256", "index", "entries", "summary", "failures", "safety"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "operation": {"const": "extract-netease-backend"},
+    "created_at": {"type": "string", "minLength": 1},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "source": {"type": "object"},
+    "selection": {
+      "type": "object",
+      "required": ["requested", "selected", "reason", "game_profile"],
+      "properties": {
+        "requested": {"enum": ["auto", "builtin", "neoxtractor", "neox-tools"]},
+        "selected": {"enum": ["builtin", "neoxtractor", "neox-tools"]},
+        "reason": {"type": "string", "minLength": 1},
+        "game_profile": {"type": "string", "minLength": 1}
+      }
+    },
+    "backend": {"type": "object"},
+    "configuration_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "index": {"type": "object"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["asset_id", "source", "source_sha256", "entry_index", "payload_id", "payload_offset", "packed_bytes", "declared_unpacked_bytes", "flags", "backend", "backend_revision", "logical_path", "logical_path_status", "output_path", "output_sha256", "bytes", "asset_type", "status", "unresolved_reason"],
+        "properties": {
+          "asset_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "source": {"type": "string"},
+          "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "entry_index": {"type": "integer", "minimum": 0},
+          "payload_id": {"type": "integer", "minimum": 0},
+          "payload_offset": {"type": "integer", "minimum": 0},
+          "packed_bytes": {"type": "integer", "minimum": 0},
+          "declared_unpacked_bytes": {"type": "integer", "minimum": 0},
+          "flags": {"type": "integer", "minimum": 0},
+          "backend": {"enum": ["neoxtractor", "neox-tools"]},
+          "backend_revision": {"type": ["string", "null"]},
+          "logical_path": {"type": ["string", "null"]},
+          "logical_path_status": {"enum": ["backend-provided", "unavailable-from-backend"]},
+          "output_path": {"type": ["string", "null"]},
+          "output_sha256": {"type": ["string", "null"]},
+          "bytes": {"type": ["integer", "null"], "minimum": 0},
+          "asset_type": {"type": "string"},
+          "status": {"enum": ["extracted", "failed"]},
+          "unresolved_reason": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "summary": {"type": "object"},
+    "failures": {"type": "array"},
+    "safety": {"type": "object"}
+  }
+}

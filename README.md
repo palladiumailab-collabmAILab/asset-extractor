@@ -29,6 +29,7 @@ python programs/asset_extractor.py scan input/raw/sample.zip --report output/run
 python programs/asset_extractor.py extract input/raw/sample.zip --output output/runs/sample
 python programs/asset_extractor.py extract input/raw/sample.zip --output output/runs/sample --resume
 python programs/asset_extractor.py validate-manifest output/runs/sample/run-manifest.json
+python programs/asset_extractor.py match-assets --dictionary game.csv --assets assets.json --output matches.json
 python -m unittest discover -s development/tests -t .
 ```
 

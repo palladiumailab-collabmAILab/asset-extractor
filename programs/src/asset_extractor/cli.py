@@ -9,6 +9,7 @@ from .common import atomic_write_json
 from .errors import ExtractionError
 from .inventory import DEFAULT_LIMITS, build_scan_manifest
 from .manifest import validate_manifest
+from .matcher import write_match_manifest
 from .pipeline import extract_inputs
 from .safety import assert_output_disjoint, resolve_output_path
 
@@ -42,6 +43,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate = subparsers.add_parser("validate-manifest", help="validate one or more manifests and their output hashes")
     validate.add_argument("manifests", nargs="+", type=Path)
+
+    match = subparsers.add_parser("match-assets", help="match logical asset names to an external game dictionary")
+    match.add_argument("--dictionary", required=True, type=Path, help="CSV or JSON entity dictionary")
+    match.add_argument("--assets", required=True, type=Path, help="JSON manifest containing assets[] or entries[]")
+    match.add_argument("--output", required=True, type=Path, help="new match manifest path")
     return parser
 
 
@@ -77,6 +83,10 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print(json.dumps({"path": str(manifest_path), "valid": True}, ensure_ascii=False, indent=2))
             return 0 if all_valid else 2
+        if arguments.command == "match-assets":
+            manifest = write_match_manifest(arguments.dictionary, arguments.assets, arguments.output)
+            print(json.dumps(manifest["summary"], ensure_ascii=False, indent=2))
+            return 0
         if arguments.command == "scan":
             if arguments.report:
                 existing_inputs = [Path(item).expanduser().resolve(strict=False) for item in arguments.inputs if Path(item).expanduser().exists()]

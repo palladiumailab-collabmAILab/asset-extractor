@@ -27,9 +27,9 @@ review, but only verified results enter the semantic publication set.
 
 | GitHub issue | Pipeline responsibility | Current starting point |
 |---|---|---|
-| #1 game dictionary matching | Join logical path tokens to external, replaceable game dictionaries | `build_character_asset_manifest.py` supports the Onmyoji four-column table |
-| #2 dedicated NeoX extractors | Execute pinned NeoXtractor and neox_tools implementations and compare them with the maintained parser | `run_pilot.py` has executed a three-way canonical pilot |
-| #3 entry provenance | Keep logical path, archive/entry identity, hashes, offsets and derived-output lineage | Raw and converted manifests contain parts of the chain but no single normalized contract |
+| #1 game dictionary matching | Join logical path tokens to external, replaceable game dictionaries and pair same-named 3D/image assets | Implemented by `asset_extractor.matcher` and `match-assets` |
+| #2 dedicated NeoX extractors | Execute pinned NeoXtractor and neox_tools checkouts through a normalized wrapper | Implemented by `run_netease_backend.py`; both checkouts passed a real-NPK smoke test |
+| #3 entry provenance | Preserve only the source identity needed by matching and backend audit | Minimum fields are implemented in raw/backend manifests; broader derived lineage is absorbed into conversion work rather than maintained as a separate blocker |
 
 ## Non-negotiable gates
 
@@ -116,8 +116,12 @@ and reserved `parent_asset_id`. Old version-2 entry records remain valid so
 existing evidence can be migrated rather than discarded. Derived-output
 lineage and converter provenance remain part of the next Phase C slice.
 
-Phase B backend adapters are the next implementation priority. They build on
-these gates without weakening the existing extraction safety contract.
+Phase B now has a maintained wrapper with automatic/explicit selection,
+NeoXtractor and neox_tools checkout adapters, runtime selection, normalized
+entries and explicit builtin fallback. Phase D now has a game-independent
+logical-name matcher with replaceable CSV/JSON dictionaries and same-name
+3D/image pairing. Additional game profiles and derived converter lineage can
+be added without weakening the existing extraction safety contract.
 
 ## Acceptance criteria
 

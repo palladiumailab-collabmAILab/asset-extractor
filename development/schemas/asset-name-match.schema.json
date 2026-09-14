@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/asset-extractor/asset-name-match.schema.json",
+  "title": "Dictionary-backed logical asset name matches",
+  "type": "object",
+  "required": ["schema_version", "operation", "created_at", "tool", "inputs", "policy", "configuration_sha256", "summary", "matches"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "operation": {"const": "match-assets-by-logical-name"},
+    "created_at": {"type": "string", "minLength": 1},
+    "tool": {"type": "object"},
+    "inputs": {"type": "object"},
+    "policy": {"type": "object"},
+    "configuration_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "summary": {"type": "object"},
+    "matches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["input_index", "source_asset", "logical_path", "asset_type", "asset_family", "entity", "matched_key", "match_method", "match_confidence", "evidence", "same_name_pair_status", "same_name_peer_indices"],
+        "properties": {
+          "input_index": {"type": "integer", "minimum": 0},
+          "asset_id": {"type": ["string", "null"]},
+          "source_asset": {"type": "object"},
+          "logical_path": {"type": ["string", "null"]},
+          "asset_type": {"type": "string"},
+          "asset_family": {"enum": ["3d", "image", "other"]},
+          "entity": {"type": ["object", "null"]},
+          "matched_key": {"type": ["string", "null"]},
+          "match_method": {"enum": ["exact", "normalized", "alias", "heuristic", "unmatched"]},
+          "match_confidence": {"enum": ["exact", "normalized", "alias", "ambiguous", "unmatched"]},
+          "evidence": {"type": "string"},
+          "same_name_pair_status": {"enum": ["paired-3d-image", "matched-single-family", "unmatched"]},
+          "same_name_peer_indices": {"type": "array", "items": {"type": "integer", "minimum": 0}}
+        }
+      }
+    }
+  }
+}

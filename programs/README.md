@@ -41,6 +41,50 @@ Do not select app-private paths that require root, `run-as`, authentication
 bypass, or permission changes. Snapshot manifests follow
 `development/schemas/bluestacks-snapshot.schema.json`.
 
+## Logical-name matching
+
+`asset-extractor match-assets` joins every asset type to a replaceable CSV or
+JSON game dictionary. The first rule is the common game convention that a 3D
+character and its illustration/texture share the same logical name. Exact
+names, normalized variant names such as `s2_hairen`, and explicit aliases are
+evaluated in that order. A model and image resolved to the same dictionary
+entity are marked `paired-3d-image`; unmatched and ambiguous rows are retained.
+
+```powershell
+python programs/asset_extractor.py match-assets `
+  --dictionary development/config/examples/onmyoji-characters.example.csv `
+  --assets C:\path\to\backend-run-manifest.json `
+  --output C:\path\to\asset-name-matches.json
+```
+
+The matcher contains no Onmyoji names. Dictionaries carry game-specific names,
+aliases, readings, rarity and arbitrary extra metadata.
+
+## Dedicated NetEase backends
+
+`run_netease_backend.py` wraps user-provided or ignored local checkouts of
+NeoXtractor and neox_tools. It supports `--backend auto`, `builtin`,
+`neoxtractor`, and `neox-tools`. Auto mode selects a dedicated checkout only
+when the input is NXPK/EXPK, a non-generic game profile is supplied, and an
+available checkout is found; otherwise it records a builtin fallback reason.
+
+```powershell
+python programs/run_netease_backend.py C:\source\model2_1.npk `
+  --output C:\runs\model2_1-backend `
+  --backend auto `
+  --game-profile onmyoji `
+  --neoxtractor-root C:\tools\NeoXtractor `
+  --neoxtractor-config C:\tools\NeoXtractor\configs\omy_omrc.json `
+  --backend-python C:\tools\neoxtractor-venv\Scripts\python.exe
+```
+
+The wrapper records checkout commit/tree/dirty state, configuration hash,
+source pre/post hash, entry metadata, logical-path availability, output hashes,
+selection reason and failures. Upstream code is not redistributed because its
+license must be established independently. neox_tools can be selected with
+`--neox-tools-root`; it receives a copied input because its published function
+writes beside that input.
+
 ## Character / material join
 
 `build_character_asset_manifest.py` is the semantic publication step after
