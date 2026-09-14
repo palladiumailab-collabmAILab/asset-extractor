@@ -114,6 +114,12 @@ license must be established independently. neox_tools can be selected with
 `--neox-tools-root`; it receives a copied input because its published function
 writes beside that input.
 
+The selected checkout, configuration, and NPK index are validated before the
+requested output directory is created. Dedicated extraction runs use a
+temporary sibling directory and commit it with an atomic rename, so a
+preflight or backend failure cannot leave a misleading empty run that blocks a
+retry.
+
 ## Character / material join
 
 `prepare_textured_pilot.py` accepts `--runtime-python` when the launcher
@@ -149,6 +155,11 @@ reference. Evidence maps follow
 is optional for portable manifests, but when present its current bytes must
 match the declared hash. Web pages and documents may support a decision, but do
 not replace the required image evidence.
+
+The textured publication status is derived from the per-model outcomes: all
+selected models must be converted for `complete`, a mixture is `partial`, and
+zero converted models is `failed`. The process exit code follows the same
+three-state contract.
 
 Example:
 

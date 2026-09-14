@@ -18,6 +18,18 @@ SPEC.loader.exec_module(MODULE)
 
 
 class PrepareTexturedRuntimeTests(unittest.TestCase):
+    def test_publication_status_reflects_each_model_outcome(self) -> None:
+        self.assertEqual(MODULE.publication_status([]), "failed")
+        self.assertEqual(MODULE.publication_status([{"status": "unresolved"}]), "failed")
+        self.assertEqual(
+            MODULE.publication_status([{"status": "converted"}, {"status": "unresolved"}]),
+            "partial",
+        )
+        self.assertEqual(
+            MODULE.publication_status([{"status": "converted"}, {"status": "converted"}]),
+            "complete",
+        )
+
     def test_missing_dependencies_are_reported_deterministically(self) -> None:
         report = {
             "PIL": {"available": True},

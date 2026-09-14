@@ -66,6 +66,21 @@ def missing_runtime_dependencies(report: dict[str, dict[str, Any]]) -> list[str]
     return sorted(name for name, row in report.items() if not row.get("available"))
 
 
+def publication_status(outputs: list[dict[str, Any]]) -> str:
+    """Return the manifest status from the actual per-model outcomes."""
+
+    if not outputs:
+        return "failed"
+    converted = sum(row.get("status") == "converted" for row in outputs)
+    if converted == len(outputs):
+        return "complete"
+    return "partial" if converted else "failed"
+
+
+def status_exit_code(status: str) -> int:
+    return {"complete": 0, "partial": 1, "failed": 2}.get(status, 2)
+
+
 def maybe_delegate_runtime(
     raw_argv: list[str],
     runtime_python: Path | None,
@@ -842,7 +857,7 @@ def main(argv: list[str] | None = None) -> int:
         "schema_version": 1,
         "stage": "textured-static-pilot",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": "complete" if outputs else "failed",
+        "status": publication_status(outputs),
         "source_policy": "read-only",
         "run_root": str(run_root),
         "catalog_runs": [str(path) for path in catalog_roots],
@@ -880,7 +895,7 @@ def main(argv: list[str] | None = None) -> int:
     write_atomic(output / "textured-static-manifest.json", json_bytes(manifest))
     write_atomic(output / "unresolved.json", json_bytes(unresolved))
     print(json.dumps(manifest["counts"], ensure_ascii=False))
-    return 0 if manifest["counts"]["converted"] else 2
+    return status_exit_code(manifest["status"])
 
 
 if __name__ == "__main__":

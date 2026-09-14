@@ -70,6 +70,8 @@ NetEase / NeoX OSS、3D＋テクスチャ、参照画像照合を一体化する
 NeoXのKTX/ASTC等をPNGへ変換する実行環境が通常のPythonと異なる場合は、
 `prepare_textured_pilot.py --runtime-python <python.exe>`を使用します。出力作成前に
 必要モジュールを検査し、実際のPython・依存versionをmanifestへ記録します。
+テクスチャ公開のstatusは実際のモデル変換結果から算出され、全件成功は`complete`、
+一部成功は`partial`、成功0件は`failed`となり、終了コードも同じ契約に従います。
 
 ## 安全境界
 

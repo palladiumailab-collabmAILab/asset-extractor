@@ -4,6 +4,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -65,6 +66,79 @@ class NetEaseBackendTests(unittest.TestCase):
         self.assertEqual(entries[0]["logical_path"], "model/s2_hairen/s2_hairen.mesh")
         self.assertEqual(entries[0]["output_path"], "raw/0000000.mesh")
         self.assertEqual(entries[0]["backend_revision"], "a" * 40)
+
+    def test_missing_dedicated_config_does_not_poison_output_path(self) -> None:
+        output = self.root / "run"
+        with self.assertRaises(MODULE.ExtractionError):
+            MODULE.run_backend(
+                source=self.source,
+                output=output,
+                requested_backend="neoxtractor",
+                game_profile="onmyoji",
+                neox_root=self.root,
+                neox_config=self.root / "missing-config.json",
+                neox_tools_root=None,
+            )
+        self.assertFalse(output.exists())
+
+    def test_dedicated_backend_commits_staged_run_atomically(self) -> None:
+        output = self.root / "run"
+        config = self.root / "config.json"
+        config.write_text("{}", encoding="utf-8")
+        index = {
+            "entry_count": 1,
+            "index_size": 32,
+            "entries": [{
+                "ordinal": 0,
+                "payload_id": 7,
+                "offset": 64,
+                "packed_bytes": 4,
+                "declared_unpacked_bytes": 4,
+                "flags_raw": 0,
+            }],
+        }
+        result = {
+            "tool_metadata": {"commit": "a" * 40},
+            "entries": [{
+                "ordinal": 0,
+                "payload_id": 7,
+                "offset": 64,
+                "packed_bytes": 4,
+                "declared_unpacked_bytes": 4,
+                "flags_raw": 0,
+                "name": "model/s2_hairen/s2_hairen.mesh",
+                "output_sha256": "b" * 64,
+                "actual_size": 4,
+                "detected_type": "mesh",
+                "status": "ok",
+                "error": None,
+            }],
+        }
+
+        def fake_run_neox(source, destination, parsed_index, root, parsed_config):
+            destination.mkdir(parents=True)
+            payload = destination / "0000000.mesh"
+            payload.write_bytes(b"mesh")
+            result["entries"][0]["output_path"] = str(payload)
+            return result
+
+        with patch.object(MODULE.run_pilot, "parse_index", return_value=index), patch.object(
+            MODULE.run_pilot, "run_neox", side_effect=fake_run_neox
+        ):
+            manifest = MODULE.run_backend(
+                source=self.source,
+                output=output,
+                requested_backend="neoxtractor",
+                game_profile="onmyoji",
+                neox_root=self.root,
+                neox_config=config,
+                neox_tools_root=None,
+            )
+
+        self.assertEqual(manifest["status"], "complete")
+        self.assertTrue((output / "backend-run-manifest.json").is_file())
+        self.assertEqual(manifest["entries"][0]["output_path"], "raw/0000000.mesh")
+        self.assertFalse(any(self.root.glob(".run.partial-*")))
 
 
 if __name__ == "__main__":

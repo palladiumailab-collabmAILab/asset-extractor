@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -149,60 +151,71 @@ def run_backend(
         manifest["claims"].append({"claim": f"backend selection: {reason}", "certainty": "fact"})
         return manifest
 
-    output.mkdir(parents=True, exist_ok=False)
-    index = run_pilot.parse_index(source)
     if selected == "neoxtractor":
         if neox_root is None or neox_config is None or not neox_config.is_file():
             raise ExtractionError("NeoXtractor checkout/config is unavailable")
-        result = run_pilot.run_neox(source, output / "raw", index, neox_root, neox_config)
-    else:
-        if neox_tools_root is None:
-            raise ExtractionError("neox_tools checkout is unavailable")
-        result = run_pilot.run_neox_tools(source, output / "raw", index, neox_tools_root)
-    after = sha256_file(source)
-    entries, failures = _normalized_external_entries(source, before, selected, result, output)
-    successes = sum(item["status"] == "extracted" for item in entries)
-    if before != after:
-        failures.append({"entry_index": None, "stage": "source-audit", "error": "source changed during extraction"})
-    status = "complete" if entries and successes == len(entries) and not failures else "partial" if successes else "failed"
-    manifest = {
-        "schema_version": 1,
-        "operation": "extract-netease-backend",
-        "created_at": utc_now(),
-        "status": status,
-        "source": {
-            "path": str(source),
-            "sha256_before": before,
-            "sha256_after": after,
-            "unchanged": before == after,
-        },
-        "selection": {
-            "requested": requested_backend,
-            "selected": selected,
-            "reason": reason,
-            "game_profile": game_profile,
-        },
-        "backend": result.get("tool_metadata", {}),
-        "configuration_sha256": config_hash({
-            "requested_backend": requested_backend,
-            "selected_backend": selected,
-            "game_profile": game_profile,
-            "backend_revision": result.get("tool_metadata", {}).get("commit"),
-            "backend_config_sha256": result.get("tool_metadata", {}).get("config_sha256"),
-        }),
-        "index": {key: value for key, value in index.items() if key != "entries"},
-        "entries": entries,
-        "summary": {"entries": len(entries), "extracted": successes, "failed": len(entries) - successes},
-        "failures": failures,
-        "safety": {
-            "source_read_only": True,
-            "new_run_root": True,
-            "output_paths_revalidated": True,
-            "backend_exit_or_return_alone_is_not_success": True,
-        },
-    }
-    run_pilot.write_json(output / "backend-run-manifest.json", manifest)
-    return manifest
+    elif neox_tools_root is None:
+        raise ExtractionError("neox_tools checkout is unavailable")
+
+    index = run_pilot.parse_index(source)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{output.name}.partial-", dir=output.parent))
+    try:
+        if selected == "neoxtractor":
+            result = run_pilot.run_neox(source, staging / "raw", index, neox_root, neox_config)
+        else:
+            result = run_pilot.run_neox_tools(source, staging / "raw", index, neox_tools_root)
+        after = sha256_file(source)
+        entries, failures = _normalized_external_entries(source, before, selected, result, staging)
+        successes = sum(item["status"] == "extracted" for item in entries)
+        if before != after:
+            failures.append({"entry_index": None, "stage": "source-audit", "error": "source changed during extraction"})
+        status = "complete" if entries and successes == len(entries) and not failures else "partial" if successes else "failed"
+        manifest = {
+            "schema_version": 1,
+            "operation": "extract-netease-backend",
+            "created_at": utc_now(),
+            "status": status,
+            "source": {
+                "path": str(source),
+                "sha256_before": before,
+                "sha256_after": after,
+                "unchanged": before == after,
+            },
+            "selection": {
+                "requested": requested_backend,
+                "selected": selected,
+                "reason": reason,
+                "game_profile": game_profile,
+            },
+            "backend": result.get("tool_metadata", {}),
+            "configuration_sha256": config_hash({
+                "requested_backend": requested_backend,
+                "selected_backend": selected,
+                "game_profile": game_profile,
+                "backend_revision": result.get("tool_metadata", {}).get("commit"),
+                "backend_config_sha256": result.get("tool_metadata", {}).get("config_sha256"),
+            }),
+            "index": {key: value for key, value in index.items() if key != "entries"},
+            "entries": entries,
+            "summary": {"entries": len(entries), "extracted": successes, "failed": len(entries) - successes},
+            "failures": failures,
+            "safety": {
+                "source_read_only": True,
+                "new_run_root": True,
+                "output_paths_revalidated": True,
+                "backend_exit_or_return_alone_is_not_success": True,
+            },
+        }
+        run_pilot.write_json(staging / "backend-run-manifest.json", manifest)
+        if output.exists():
+            raise ExtractionError(f"output appeared before atomic run commit: {output}")
+        os.replace(staging, output)
+        staging = None
+        return manifest
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
