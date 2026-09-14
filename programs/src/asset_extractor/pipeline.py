@@ -379,6 +379,150 @@ def _validate_profile(profile: str) -> None:
         raise ExtractionError(f"unsupported profile: {profile}")
 
 
+def _extract_one_input(
+    *,
+    source: Path,
+    source_index: int,
+    input_row: dict[str, Any],
+    source_root: Path,
+    target: Path,
+    output_rows: list[dict[str, Any]],
+    failures: list[dict[str, str]],
+    profile: str,
+    strict: bool,
+    limits: dict[str, int | float],
+) -> bool:
+    """Extract one validated input into a staging subtree."""
+
+    try:
+        kind = input_row["kind"]
+        if profile == "zip" and kind not in {"zip", "apk-zip", "obb-zip"}:
+            raise ExtractionError(f"profile=zip cannot process {source.name}")
+        if profile == "nxpk" and kind != "nxpk":
+            raise ExtractionError(f"profile=nxpk cannot process {source.name}")
+        if kind in {"zip", "apk-zip", "obb-zip"}:
+            extracted_entries = _extract_zip(source, target, limits)
+        elif kind == "nxpk":
+            extracted_entries = extract_nxpk(source, target, limits)["entries"]
+        else:
+            raise ExtractionError(f"unsupported input format: {source}")
+        source_sha256 = input_row["source_sha256_before"]
+        if not isinstance(source_sha256, str):
+            raise ExtractionError(f"source SHA-256 is unavailable for {source.name}")
+        output_rows.extend(
+            _manifest_entry(source, source_root.name, source_index, source_sha256, entry)
+            for entry in extracted_entries
+        )
+        input_row["status"] = "ok"
+        return True
+    except (OSError, ExtractionError, zipfile.BadZipFile) as exc:
+        input_row["status"] = "error"
+        input_row["error"] = str(exc)
+        failures.append(_failure(str(source), str(exc), "extract"))
+        shutil.rmtree(target, ignore_errors=True)
+        if strict:
+            raise ExtractionError(f"strict extraction failed for {source.name}: {exc}") from exc
+        return False
+
+
+def _extract_valid_inputs(
+    *,
+    valid: list[tuple[Path, dict[str, Any]]],
+    extracted_root: Path,
+    output_rows: list[dict[str, Any]],
+    failures: list[dict[str, str]],
+    profile: str,
+    strict: bool,
+    limits: dict[str, int | float],
+) -> int:
+    """Extract all preflight-approved inputs and return the success count."""
+
+    processed = 0
+    for index, (source, input_row) in enumerate(valid, start=1):
+        target = extracted_root / _safe_stem(source, index)
+        if _extract_one_input(
+            source=source,
+            source_index=index - 1,
+            input_row=input_row,
+            source_root=target,
+            target=target,
+            output_rows=output_rows,
+            failures=failures,
+            profile=profile,
+            strict=strict,
+            limits=limits,
+        ):
+            processed += 1
+    return processed
+
+
+def _assert_sources_unchanged(
+    input_rows: list[dict[str, Any]],
+    failures: list[dict[str, str]],
+    error_message: str,
+) -> None:
+    """Re-hash sources and fail closed if any source changed."""
+
+    failures.extend(_audit_inputs(input_rows))
+    if any(row["source_unchanged"] is False for row in input_rows):
+        raise ExtractionError(error_message)
+
+
+def _build_staged_manifest(
+    *,
+    temporary: Path,
+    destination: Path,
+    processed: int,
+    failures: list[dict[str, str]],
+    input_rows: list[dict[str, Any]],
+    profile: str,
+    strict: bool,
+    resume: bool,
+    limits: dict[str, int | float],
+    output_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Audit staged sources, build, validate, and write the run manifest."""
+
+    _assert_sources_unchanged(input_rows, failures, "source hash changed during extraction")
+    if not processed:
+        raise ExtractionError("no input was extracted successfully")
+    extracted_root = temporary / "extracted"
+    output_files = file_rows(extracted_root)
+    # Repeat the audit after output hashing so the final provenance check is
+    # immediately before manifest creation and the atomic run commit.
+    _assert_sources_unchanged(input_rows, failures, "source hash changed during finalization")
+    status = "complete" if not failures else "partial"
+    normalized = _normalized_config(profile, strict, limits)
+    key = _resume_key(input_rows, normalized)
+    manifest = _build_manifest(
+        status=status,
+        profile=profile,
+        strict=strict,
+        resume=resume,
+        limits=limits,
+        input_rows=input_rows,
+        output_directory=destination / "extracted",
+        output_files=output_files,
+        entries=output_rows,
+        failures=failures,
+        committed=True,
+        resume_key=key,
+    )
+    manifest_errors = validate_manifest(manifest)
+    if manifest_errors:
+        raise ExtractionError(f"generated manifest is invalid: {'; '.join(manifest_errors)}")
+    atomic_write_json(temporary / "run-manifest.json", manifest)
+    return manifest
+
+
+def _commit_staged_run(temporary: Path, destination: Path) -> None:
+    """Publish a prepared run directory without overwriting an existing run."""
+
+    if destination.exists():
+        raise ExtractionError("output appeared before atomic run commit")
+    os.replace(temporary, destination)
+
+
 def _extract_to_staging(
     *,
     raw_inputs: list[str],
@@ -399,76 +543,30 @@ def _extract_to_staging(
     extracted_root = temporary / "extracted"
     extracted_root.mkdir(parents=True, exist_ok=True)
     output_rows: list[dict[str, Any]] = []
-    processed = 0
     manifest: dict[str, Any]
     try:
-        for index, (source, input_row) in enumerate(valid, start=1):
-            source_root = _safe_stem(source, index)
-            target = extracted_root / source_root
-            try:
-                kind = input_row["kind"]
-                if profile == "zip" and kind not in {"zip", "apk-zip", "obb-zip"}:
-                    raise ExtractionError(f"profile=zip cannot process {source.name}")
-                if profile == "nxpk" and kind != "nxpk":
-                    raise ExtractionError(f"profile=nxpk cannot process {source.name}")
-                if kind in {"zip", "apk-zip", "obb-zip"}:
-                    extracted_entries = _extract_zip(source, target, limits)
-                elif kind == "nxpk":
-                    extracted_entries = extract_nxpk(source, target, limits)["entries"]
-                else:
-                    raise ExtractionError(f"unsupported input format: {source}")
-                source_sha256 = input_row["source_sha256_before"]
-                if not isinstance(source_sha256, str):
-                    raise ExtractionError(f"source SHA-256 is unavailable for {source.name}")
-                output_rows.extend(
-                    _manifest_entry(source, source_root, index - 1, source_sha256, entry)
-                    for entry in extracted_entries
-                )
-                input_row["status"] = "ok"
-                processed += 1
-            except (OSError, ExtractionError, zipfile.BadZipFile) as exc:
-                input_row["status"] = "error"
-                input_row["error"] = str(exc)
-                failures.append(_failure(str(source), str(exc), "extract"))
-                shutil.rmtree(target, ignore_errors=True)
-                if strict:
-                    raise ExtractionError(f"strict extraction failed for {source.name}: {exc}") from exc
-
-        failures.extend(_audit_inputs(input_rows))
-        if any(row["source_unchanged"] is False for row in input_rows):
-            raise ExtractionError("source hash changed during extraction")
-        if not processed:
-            raise ExtractionError("no input was extracted successfully")
-        output_files = file_rows(extracted_root)
-        # Repeat the audit after output hashing so the final provenance check is
-        # immediately before manifest creation and the atomic run commit.
-        failures.extend(_audit_inputs(input_rows))
-        if any(row["source_unchanged"] is False for row in input_rows):
-            raise ExtractionError("source hash changed during finalization")
-        status = "complete" if not failures else "partial"
-        normalized = _normalized_config(profile, strict, limits)
-        key = _resume_key(input_rows, normalized)
-        manifest = _build_manifest(
-            status=status,
+        processed = _extract_valid_inputs(
+            valid=valid,
+            extracted_root=extracted_root,
+            output_rows=output_rows,
+            failures=failures,
+            profile=profile,
+            strict=strict,
+            limits=limits,
+        )
+        manifest = _build_staged_manifest(
+            temporary=temporary,
+            destination=destination,
+            processed=processed,
+            failures=failures,
+            input_rows=input_rows,
             profile=profile,
             strict=strict,
             resume=resume,
             limits=limits,
-            input_rows=input_rows,
-            output_directory=destination / "extracted",
-            output_files=output_files,
-            entries=output_rows,
-            failures=failures,
-            committed=True,
-            resume_key=key,
+            output_rows=output_rows,
         )
-        manifest_errors = validate_manifest(manifest)
-        if manifest_errors:
-            raise ExtractionError(f"generated manifest is invalid: {'; '.join(manifest_errors)}")
-        atomic_write_json(temporary / "run-manifest.json", manifest)
-        if destination.exists():
-            raise ExtractionError("output appeared before atomic run commit")
-        os.replace(temporary, destination)
+        _commit_staged_run(temporary, destination)
         temporary = Path()
     except (OSError, ExtractionError, zipfile.BadZipFile) as exc:
         failures.extend(_audit_inputs(input_rows))
