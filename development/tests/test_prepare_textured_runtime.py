@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -76,6 +77,57 @@ class PrepareTexturedRuntimeTests(unittest.TestCase):
             with self.assertRaises(ImportError):
                 MODULE.load_neoxtractor_modules(Path(temporary))
             self.assertEqual(sys.path, original_path)
+
+    def test_material_override_loader_normalizes_and_retains_explicit_slots(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "overrides.json"
+            mesh_sha = "A" * 64
+            material_sha = "B" * 64
+            path.write_text(
+                json.dumps(
+                    {
+                        "overrides": {
+                            mesh_sha: {
+                                "material_source_sha256": material_sha,
+                                "slot_indices": [1, 0],
+                                "reason": "audited fixture",
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            resolved, overrides = MODULE.load_material_overrides(path)
+        self.assertEqual(resolved, path.resolve())
+        self.assertEqual(
+            overrides,
+            {
+                "a" * 64: {
+                    "material_source_sha256": "b" * 64,
+                    "slot_indices": [1, 0],
+                    "reason": "audited fixture",
+                }
+            },
+        )
+
+    def test_material_override_loader_rejects_invalid_slot_indices(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "invalid-overrides.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "overrides": {
+                            "a" * 64: {
+                                "material_source_sha256": "b" * 64,
+                                "slot_indices": [True],
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(MODULE.PublicationError, "slot_indices"):
+                MODULE.load_material_overrides(path)
 
 
 if __name__ == "__main__":

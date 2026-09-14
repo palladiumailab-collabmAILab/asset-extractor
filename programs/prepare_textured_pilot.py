@@ -753,8 +753,34 @@ def publish_mesh(
     return item, item["status"] != "converted"
 
 
-def main(argv: list[str] | None = None) -> int:
-    raw_argv = list(sys.argv[1:] if argv is None else argv)
+class PublicationInputs:
+    """Resolved runtime modules and catalog indexes used by mesh publication."""
+
+    def __init__(
+        self,
+        *,
+        convert_image: Any,
+        gltf: Any,
+        mesh_loader: Any,
+        bones: Any,
+        mesh_hash: Any,
+        by_hash: dict[str, list[dict[str, Any]]],
+        mesh_rows_by_sha: dict[str, list[dict[str, Any]]],
+        material_records: list[dict[str, Any]],
+        material_by_mesh: dict[str, dict[str, dict[str, Any]]],
+    ) -> None:
+        self.convert_image = convert_image
+        self.gltf = gltf
+        self.mesh_loader = mesh_loader
+        self.bones = bones
+        self.mesh_hash = mesh_hash
+        self.by_hash = by_hash
+        self.mesh_rows_by_sha = mesh_rows_by_sha
+        self.material_records = material_records
+        self.material_by_mesh = material_by_mesh
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-root", required=True, type=Path)
     parser.add_argument("--catalog-run", action="append", default=[], type=Path)
@@ -785,129 +811,195 @@ def main(argv: list[str] | None = None) -> int:
         help="Python executable containing NeoXtractor image-decoder dependencies",
     )
     parser.add_argument("--_runtime-active", action="store_true", help=argparse.SUPPRESS)
-    args = parser.parse_args(raw_argv)
-    try:
-        delegated = maybe_delegate_runtime(raw_argv, args.runtime_python, args._runtime_active)
-    except PublicationError as exc:
-        print(f"textured publication failed: {exc}", file=sys.stderr)
-        return 2
-    if delegated is not None:
-        return delegated
+    return parser
 
+
+def load_material_overrides(
+    path: Path | None,
+) -> tuple[Path | None, dict[str, dict[str, Any]]]:
+    """Load explicit mesh/material slot mappings without mutating the catalog."""
+
+    if path is None:
+        return None, {}
+    resolved = path.resolve()
+    if not resolved.is_file():
+        raise PublicationError(f"material override configuration missing: {resolved}")
+    try:
+        document = json.loads(resolved.read_text(encoding="utf-8"))
+        raw_overrides = document.get("overrides")
+        if not isinstance(raw_overrides, dict):
+            raise ValueError("overrides must be an object")
+        overrides: dict[str, dict[str, Any]] = {}
+        for raw_mesh_sha, raw_spec in raw_overrides.items():
+            mesh_sha = str(raw_mesh_sha).strip().lower()
+            if not re.fullmatch(r"[0-9a-f]{64}", mesh_sha):
+                raise ValueError(f"invalid mesh SHA-256 key: {raw_mesh_sha}")
+            if not isinstance(raw_spec, dict):
+                raise ValueError(f"override for {mesh_sha} must be an object")
+            material_sha = str(raw_spec.get("material_source_sha256", "")).strip().lower()
+            if not re.fullmatch(r"[0-9a-f]{64}", material_sha):
+                raise ValueError(f"invalid material SHA-256 for {mesh_sha}")
+            slot_indices = raw_spec.get("slot_indices")
+            if (
+                not isinstance(slot_indices, list)
+                or not slot_indices
+                or any(
+                    isinstance(value, bool) or not isinstance(value, int) or value < 0
+                    for value in slot_indices
+                )
+            ):
+                raise ValueError(
+                    f"slot_indices for {mesh_sha} must be a non-empty list of non-negative integers"
+                )
+            overrides[mesh_sha] = {
+                "material_source_sha256": material_sha,
+                "slot_indices": list(slot_indices),
+                "reason": str(raw_spec.get("reason", "")),
+            }
+    except (OSError, json.JSONDecodeError, ValueError, AttributeError) as exc:
+        raise PublicationError(f"invalid material override configuration: {exc}") from exc
+    return resolved, overrides
+
+
+def _runtime_context(args: argparse.Namespace) -> tuple[Path, list[Path], Path, Path, dict[str, Any]]:
     run_root = args.run_root.resolve()
     catalog_roots = [run_root, *(path.resolve() for path in args.catalog_run)]
     output = args.output.resolve()
     source_tree = args.source_tree.resolve()
     if output.exists():
-        raise SystemExit(f"output already exists: {output}")
+        raise PublicationError(f"output already exists: {output}")
     if not source_tree.is_dir():
-        raise SystemExit(f"NeoXtractor source tree missing: {source_tree}")
-
+        raise PublicationError(f"NeoXtractor source tree missing: {source_tree}")
     dependency_report = runtime_dependency_report()
     missing_dependencies = missing_runtime_dependencies(dependency_report)
     if missing_dependencies:
-        print(
-            "textured publication failed: runtime dependency preflight missing "
-            + ", ".join(missing_dependencies),
-            file=sys.stderr,
+        raise PublicationError(
+            "runtime dependency preflight missing " + ", ".join(missing_dependencies)
         )
-        return 2
-    runtime_metadata = {
-        "executable": str(Path(sys.executable).resolve()),
-        "version": sys.version.split()[0],
-        "requested_executable": str(args.runtime_python.expanduser().resolve()) if args.runtime_python else None,
-        "delegated": bool(args._runtime_active),
-        "dependencies": dependency_report,
-        "preflight_complete": True,
-    }
+    return (
+        run_root,
+        catalog_roots,
+        output,
+        source_tree,
+        {
+            "executable": str(Path(sys.executable).resolve()),
+            "version": sys.version.split()[0],
+            "requested_executable": (
+                str(args.runtime_python.expanduser().resolve()) if args.runtime_python else None
+            ),
+            "delegated": bool(args._runtime_active),
+            "dependencies": dependency_report,
+            "preflight_complete": True,
+        },
+    )
 
-    material_overrides: dict[str, dict[str, Any]] = {}
-    material_overrides_path: Path | None = None
-    if args.material_overrides is not None:
-        material_overrides_path = args.material_overrides.resolve()
-        if not material_overrides_path.is_file():
-            raise SystemExit(f"material override configuration missing: {material_overrides_path}")
-        try:
-            override_document = json.loads(material_overrides_path.read_text(encoding="utf-8"))
-            raw_overrides = override_document.get("overrides")
-            if not isinstance(raw_overrides, dict):
-                raise ValueError("overrides must be an object")
-            for raw_mesh_sha, raw_spec in raw_overrides.items():
-                mesh_sha = str(raw_mesh_sha).strip().lower()
-                if not re.fullmatch(r"[0-9a-f]{64}", mesh_sha):
-                    raise ValueError(f"invalid mesh SHA-256 key: {raw_mesh_sha}")
-                if not isinstance(raw_spec, dict):
-                    raise ValueError(f"override for {mesh_sha} must be an object")
-                material_sha = str(raw_spec.get("material_source_sha256", "")).strip().lower()
-                if not re.fullmatch(r"[0-9a-f]{64}", material_sha):
-                    raise ValueError(f"invalid material SHA-256 for {mesh_sha}")
-                slot_indices = raw_spec.get("slot_indices")
-                if (
-                    not isinstance(slot_indices, list)
-                    or not slot_indices
-                    or any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in slot_indices)
-                ):
-                    raise ValueError(f"slot_indices for {mesh_sha} must be a non-empty list of non-negative integers")
-                material_overrides[mesh_sha] = {
-                    "material_source_sha256": material_sha,
-                    "slot_indices": list(slot_indices),
-                    "reason": str(raw_spec.get("reason", "")),
-                }
-        except (OSError, json.JSONDecodeError, ValueError, AttributeError) as exc:
-            raise SystemExit(f"invalid material override configuration: {exc}") from exc
 
-    try:
-        convert_image, gltf, MeshLoader, Bones, mesh_hash = load_neoxtractor_modules(source_tree)
-    except (ImportError, ModuleNotFoundError) as exc:
-        print(f"textured publication failed: NeoXtractor import preflight: {exc}", file=sys.stderr)
-        return 2
+def _load_publication_inputs(
+    *,
+    source_tree: Path,
+    catalog_roots: list[Path],
+    output: Path,
+    only_mesh_sha256: list[str],
+) -> PublicationInputs:
+    convert_image, gltf, mesh_loader, bones, mesh_hash = load_neoxtractor_modules(source_tree)
     output.mkdir(parents=True)
-
     entries, by_hash = load_catalog(catalog_roots)
     mesh_rows_by_sha: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in entries:
         if row.get("category") == "mesh":
             mesh_rows_by_sha[str(row["sha256"])].append(row)
-    if args.only_mesh_sha256:
-        selected = {value.strip().lower() for value in args.only_mesh_sha256}
+    if only_mesh_sha256:
+        selected = {value.strip().lower() for value in only_mesh_sha256}
         mesh_rows_by_sha = {
             digest: rows for digest, rows in mesh_rows_by_sha.items() if digest.lower() in selected
         }
-
     material_records, material_by_mesh = load_material_records(entries, by_hash, mesh_hash)
+    return PublicationInputs(
+        convert_image=convert_image,
+        gltf=gltf,
+        mesh_loader=mesh_loader,
+        bones=bones,
+        mesh_hash=mesh_hash,
+        by_hash=by_hash,
+        mesh_rows_by_sha=mesh_rows_by_sha,
+        material_records=material_records,
+        material_by_mesh=material_by_mesh,
+    )
 
+
+def _publish_meshes(
+    inputs: PublicationInputs,
+    output: Path,
+    material_overrides: dict[str, dict[str, Any]],
+    allow_equivalent_material_duplicates: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, dict[str, Any]]]:
     outputs: list[dict[str, Any]] = []
     unresolved: list[dict[str, Any]] = []
     texture_outputs: dict[str, dict[str, Any]] = {}
-    for mesh_sha, source_rows in sorted(mesh_rows_by_sha.items()):
+    for mesh_sha, source_rows in sorted(inputs.mesh_rows_by_sha.items()):
         item, is_unresolved = publish_mesh(
             mesh_sha=mesh_sha,
             source_rows=source_rows,
-            material_by_mesh=material_by_mesh,
+            material_by_mesh=inputs.material_by_mesh,
             material_overrides=material_overrides,
-            allow_equivalent_material_duplicates=args.allow_equivalent_material_duplicates,
-            by_hash=by_hash,
+            allow_equivalent_material_duplicates=allow_equivalent_material_duplicates,
+            by_hash=inputs.by_hash,
             output=output,
             texture_outputs=texture_outputs,
-            mesh_loader=MeshLoader,
-            bones=Bones,
-            mesh_hash=mesh_hash,
-            convert_image=convert_image,
-            gltf=gltf,
+            mesh_loader=inputs.mesh_loader,
+            bones=inputs.bones,
+            mesh_hash=inputs.mesh_hash,
+            convert_image=inputs.convert_image,
+            gltf=inputs.gltf,
         )
         if is_unresolved:
             unresolved.append(item)
         outputs.append(item)
+    return outputs, unresolved, texture_outputs
 
+
+def _read_optional_json(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PublicationError(f"cannot read run metadata: {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise PublicationError(f"run metadata must be an object: {path}")
+    return value
+
+
+def _run_metadata(run_root: Path) -> tuple[dict[str, Any], dict[str, Any], Path, Path]:
     differential_path = run_root / "differential.json"
     if not differential_path.is_file():
         differential_path = run_root / "oracle-comparison.json"
-    differential = json.loads(differential_path.read_text(encoding="utf-8")) if differential_path.is_file() else {}
+    differential = _read_optional_json(differential_path)
     provenance_path = run_root / "tool-provenance.json"
-    provenance = json.loads(provenance_path.read_text(encoding="utf-8")) if provenance_path.is_file() else {}
+    provenance = _read_optional_json(provenance_path)
     raw_manifest_path = run_root / "raw-extraction-manifest.json"
     if not raw_manifest_path.is_file():
         raw_manifest_path = run_root / "production" / "run-manifest.json"
+    return differential, provenance, raw_manifest_path, differential_path
+
+
+def _build_publication_manifests(
+    *,
+    run_root: Path,
+    catalog_roots: list[Path],
+    output: Path,
+    runtime_metadata: dict[str, Any],
+    allow_equivalent_material_duplicates: bool,
+    material_overrides: dict[str, dict[str, Any]],
+    material_overrides_path: Path | None,
+    material_records: list[dict[str, Any]],
+    outputs: list[dict[str, Any]],
+    texture_outputs: dict[str, dict[str, Any]],
+    differential: dict[str, Any],
+    provenance: dict[str, Any],
+    raw_manifest_path: Path,
+    differential_path: Path,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     neox_metadata = provenance.get("tools", {}).get("NeoXtractor") or differential.get("NeoXtractor", {}).get("tool_metadata")
     neox_tools_metadata = provenance.get("tools", {}).get("neox_tools") or differential.get("neox_tools", {}).get("tool_metadata")
     oracle_gate = differential.get("gate") or differential.get("comparison")
@@ -922,7 +1014,7 @@ def main(argv: list[str] | None = None) -> int:
             "ambiguity": "fail closed; never choose among multiple material, mesh, or texture payloads",
             "equivalent_material_duplicates": (
                 "enabled: coalesce only identical Tex0/render-state signatures; choose lowest source SHA-256"
-                if args.allow_equivalent_material_duplicates
+                if allow_equivalent_material_duplicates
                 else "disabled"
             ),
             "submesh_material": (
@@ -945,7 +1037,7 @@ def main(argv: list[str] | None = None) -> int:
         "catalog_runs": [str(path) for path in catalog_roots],
         "output_root": str(output),
         "counts": {
-            "unique_meshes": len(mesh_rows_by_sha),
+            "unique_meshes": len(outputs),
             "converted": sum(row["status"] == "converted" for row in outputs),
             "unresolved": sum(row["status"] != "converted" for row in outputs),
             "unique_textures_published": len(texture_outputs),
@@ -954,12 +1046,18 @@ def main(argv: list[str] | None = None) -> int:
             "NeoXtractor": neox_metadata,
             "neox_tools": neox_tools_metadata,
             "neox_tools_oracle_gate": oracle_gate,
-            "publication_script": {"path": str(Path(__file__).resolve()), "sha256": sha256_file(Path(__file__).resolve())},
+            "publication_script": {
+                "path": str(Path(__file__).resolve()),
+                "sha256": sha256_file(Path(__file__).resolve()),
+            },
             "runtime": runtime_metadata,
         },
         "source_manifests": {
             "raw": {"path": str(raw_manifest_path), "sha256": sha256_file(raw_manifest_path)},
-            "classification": {"path": str(run_root / "type-classification.json"), "sha256": sha256_file(run_root / "type-classification.json")},
+            "classification": {
+                "path": str(run_root / "type-classification.json"),
+                "sha256": sha256_file(run_root / "type-classification.json"),
+            },
             "differential": {"path": str(differential_path), "sha256": sha256_file(differential_path)},
         },
         "models": outputs,
@@ -973,12 +1071,60 @@ def main(argv: list[str] | None = None) -> int:
             "sha256": sha256_file(material_overrides_path),
             "entries": len(material_overrides),
         }
-    write_atomic(output / "resolver-manifest.json", json_bytes(resolver))
-    write_atomic(output / "textured-static-manifest.json", json_bytes(manifest))
-    write_atomic(output / "unresolved.json", json_bytes(unresolved))
-    print(json.dumps(manifest["counts"], ensure_ascii=False))
-    return status_exit_code(manifest["status"])
+    return resolver, manifest
 
+
+def main(argv: list[str] | None = None) -> int:
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(raw_argv)
+    try:
+        delegated = maybe_delegate_runtime(raw_argv, args.runtime_python, args._runtime_active)
+    except PublicationError as exc:
+        print(f"textured publication failed: {exc}", file=sys.stderr)
+        return 2
+    if delegated is not None:
+        return delegated
+
+    try:
+        run_root, catalog_roots, output, source_tree, runtime_metadata = _runtime_context(args)
+        material_overrides_path, material_overrides = load_material_overrides(args.material_overrides)
+        inputs = _load_publication_inputs(
+            source_tree=source_tree,
+            catalog_roots=catalog_roots,
+            output=output,
+            only_mesh_sha256=args.only_mesh_sha256,
+        )
+        outputs, unresolved, texture_outputs = _publish_meshes(
+            inputs,
+            output,
+            material_overrides,
+            args.allow_equivalent_material_duplicates,
+        )
+        differential, provenance, raw_manifest_path, differential_path = _run_metadata(run_root)
+        resolver, manifest = _build_publication_manifests(
+            run_root=run_root,
+            catalog_roots=catalog_roots,
+            output=output,
+            runtime_metadata=runtime_metadata,
+            allow_equivalent_material_duplicates=args.allow_equivalent_material_duplicates,
+            material_overrides=material_overrides,
+            material_overrides_path=material_overrides_path,
+            material_records=inputs.material_records,
+            outputs=outputs,
+            texture_outputs=texture_outputs,
+            differential=differential,
+            provenance=provenance,
+            raw_manifest_path=raw_manifest_path,
+            differential_path=differential_path,
+        )
+        write_atomic(output / "resolver-manifest.json", json_bytes(resolver))
+        write_atomic(output / "textured-static-manifest.json", json_bytes(manifest))
+        write_atomic(output / "unresolved.json", json_bytes(unresolved))
+        print(json.dumps(manifest["counts"], ensure_ascii=False))
+        return status_exit_code(manifest["status"])
+    except (ImportError, OSError, PublicationError, ValueError) as exc:
+        print(f"textured publication failed: {exc}", file=sys.stderr)
+        return 2
 
 if __name__ == "__main__":
     raise SystemExit(main())
