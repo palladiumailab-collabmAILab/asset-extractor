@@ -738,18 +738,15 @@ def _verify_sources_after(
     manifest["source_unchanged"] = all_unchanged if source_rows else None
 
 
-def run_minimal_restore_test(
+def _prepare_run(
     source_paths: Iterable[str | os.PathLike[str]],
     output_dir: str | os.PathLike[str],
-    *,
-    video_member: str | None = None,
-    image_member: str | None = None,
-    expected_source_sha256: Iterable[str] | None = None,
-    max_member_bytes: int = DEFAULT_MAX_MEMBER_BYTES,
-    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
-    max_ratio: float = DEFAULT_MAX_RATIO,
-) -> dict[str, Any]:
-    """Run the Python-only two-member test and return its manifest object."""
+    expected_source_sha256: Iterable[str] | None,
+    max_member_bytes: int,
+    max_total_bytes: int,
+    max_ratio: float,
+) -> tuple[list[SourceRecord], Path, dict[str, int | float]]:
+    """Validate run arguments and create the new output directory."""
 
     paths = [Path(path).expanduser().resolve() for path in source_paths]
     if not paths:
@@ -781,130 +778,166 @@ def run_minimal_restore_test(
         for index, path in enumerate(paths)
     ]
     output.mkdir(parents=True, exist_ok=False)
-    manifest = _new_manifest(records, output, limits)
-    source_rows = manifest["sources"]
+    return records, output, limits
+
+
+def _preflight_sources(
+    records: list[SourceRecord],
+    source_rows: list[dict[str, Any]],
+    limits: dict[str, int | float],
+    manifest: dict[str, Any],
+) -> tuple[list[Candidate], list[Candidate]]:
+    """Hash, inspect, and enumerate candidate members from each source."""
 
     video_candidates: list[Candidate] = []
     image_candidates: list[Candidate] = []
-    try:
-        for record, row in zip(records, source_rows):
-            if not record.path.exists():
-                row["status"] = "missing"
-                row["error"] = "source archive does not exist"
+    for record, row in zip(records, source_rows):
+        if not record.path.exists():
+            row["status"] = "missing"
+            row["error"] = "source archive does not exist"
+            _record_failure(manifest, str(record.path), "source-preflight", row["error"])
+            continue
+        if not record.path.is_file() or record.path.is_symlink():
+            row["status"] = "error"
+            row["error"] = "source must be a regular non-symlink file"
+            _record_failure(manifest, str(record.path), "source-preflight", row["error"])
+            continue
+        try:
+            sha256_before, source_bytes = _sha256_file(record.path)
+            row["bytes"] = source_bytes
+            row["sha256_before"] = sha256_before
+            row["expected_match"] = (
+                record.expected_sha256 is None or sha256_before == record.expected_sha256
+            )
+            if not row["expected_match"]:
+                row["status"] = "error"
+                row["error"] = "source SHA-256 did not match the expected provenance hash"
                 _record_failure(manifest, str(record.path), "source-preflight", row["error"])
                 continue
-            if not record.path.is_file() or record.path.is_symlink():
-                row["status"] = "error"
-                row["error"] = "source must be a regular non-symlink file"
-                _record_failure(manifest, str(record.path), "source-preflight", row["error"])
-                continue
-            try:
-                sha256_before, source_bytes = _sha256_file(record.path)
-                row["bytes"] = source_bytes
-                row["sha256_before"] = sha256_before
-                row["expected_match"] = (
-                    record.expected_sha256 is None or sha256_before == record.expected_sha256
-                )
-                if not row["expected_match"]:
-                    row["status"] = "error"
-                    row["error"] = "source SHA-256 did not match the expected provenance hash"
-                    _record_failure(manifest, str(record.path), "source-preflight", row["error"])
-                    continue
-                source_videos, source_images = _source_candidates(record, row, limits)
-                video_candidates.extend(source_videos)
-                image_candidates.extend(source_images)
-                row["status"] = "ready"
-            except (OSError, PermissionError, zipfile.BadZipFile, RuntimeError, ValueError) as exc:
-                row["status"] = "error"
-                row["error"] = str(exc)
-                _record_failure(manifest, str(record.path), "source-preflight", row["error"])
+            source_videos, source_images = _source_candidates(record, row, limits)
+            video_candidates.extend(source_videos)
+            image_candidates.extend(source_images)
+            row["status"] = "ready"
+        except (OSError, PermissionError, zipfile.BadZipFile, RuntimeError, ValueError) as exc:
+            row["status"] = "error"
+            row["error"] = str(exc)
+            _record_failure(manifest, str(record.path), "source-preflight", row["error"])
+    return video_candidates, image_candidates
 
-        selected_video, video_failures = _select_candidate("video", video_candidates, video_member)
-        selected_direct_image, image_failures = _select_candidate("image", image_candidates, image_member)
-        selected_image: Candidate | NestedCandidate | None = selected_direct_image
-        if selected_image is None and image_member is None:
-            nested_image, nested_failures = _find_nested_nxpk_image(records, output, limits)
-            image_failures.extend(nested_failures)
-            selected_image = nested_image
-        manifest["selection"]["candidate_rejections"]["video"] = video_failures
-        manifest["selection"]["candidate_rejections"]["image"] = image_failures
-        if selected_video is not None:
-            manifest["selection"]["video"] = {
-                "source_index": selected_video.source_index,
-                "source_archive": str(selected_video.source_path),
-                "member": selected_video.normalized_member,
-                "declared_bytes": selected_video.info.file_size,
-                "compressed_bytes": selected_video.info.compress_size,
-                "crc32": f"{selected_video.info.CRC & 0xFFFFFFFF:08x}",
-                "detection": selected_video.detection,
-            }
-        else:
-            _record_failure(manifest, "video", "selection", "; ".join(video_failures))
-        if isinstance(selected_image, Candidate):
-            manifest["selection"]["image"] = {
-                "source_index": selected_image.source_index,
-                "source_archive": str(selected_image.source_path),
-                "member": selected_image.normalized_member,
-                "declared_bytes": selected_image.info.file_size,
-                "compressed_bytes": selected_image.info.compress_size,
-                "crc32": f"{selected_image.info.CRC & 0xFFFFFFFF:08x}",
-                "detection": selected_image.detection,
-                "nested": False,
-            }
-        elif isinstance(selected_image, NestedCandidate):
-            nested_member = (
-                f"{selected_image.container_member}::entry/"
-                f"{selected_image.payload_index:07d}_{selected_image.payload_id:08x}."
-                f"{selected_image.detection['format']}"
-            )
-            manifest["selection"]["image"] = {
-                "source_index": selected_image.source_index,
-                "source_archive": str(selected_image.source_path),
-                "member": nested_member,
-                "declared_bytes": len(selected_image.payload),
-                "compressed_bytes": selected_image.packed_bytes,
-                "crc32": None,
-                "detection": selected_image.detection,
-                "nested": True,
-                "container_member": selected_image.container_member,
-                "container_sha256": selected_image.container_sha256,
-                "nested_entry_index": selected_image.payload_index,
-                "nested_payload_id": selected_image.payload_id,
-            }
-        else:
-            _record_failure(manifest, "image", "selection", "; ".join(image_failures))
 
-        if selected_video is not None and selected_image is not None:
-            selected_assets = [("video", selected_video), ("image", selected_image)]
-            total_selected_bytes = sum(
-                candidate.info.file_size if isinstance(candidate, Candidate) else len(candidate.payload)
-                for _, candidate in selected_assets
-            )
-            if total_selected_bytes > max_total_bytes:
-                _record_failure(
-                    manifest,
-                    "selection",
-                    "limits",
-                    f"selected members exceed total output limit ({total_selected_bytes} > {max_total_bytes})",
-                )
+def _selection_record(candidate: Candidate | NestedCandidate) -> dict[str, Any]:
+    """Serialize a selected direct or nested candidate for the manifest."""
+
+    if isinstance(candidate, Candidate):
+        return {
+            "source_index": candidate.source_index,
+            "source_archive": str(candidate.source_path),
+            "member": candidate.normalized_member,
+            "declared_bytes": candidate.info.file_size,
+            "compressed_bytes": candidate.info.compress_size,
+            "crc32": f"{candidate.info.CRC & 0xFFFFFFFF:08x}",
+            "detection": candidate.detection,
+            "nested": False,
+        }
+    nested_member = (
+        f"{candidate.container_member}::entry/"
+        f"{candidate.payload_index:07d}_{candidate.payload_id:08x}."
+        f"{candidate.detection['format']}"
+    )
+    return {
+        "source_index": candidate.source_index,
+        "source_archive": str(candidate.source_path),
+        "member": nested_member,
+        "declared_bytes": len(candidate.payload),
+        "compressed_bytes": candidate.packed_bytes,
+        "crc32": None,
+        "detection": candidate.detection,
+        "nested": True,
+        "container_member": candidate.container_member,
+        "container_sha256": candidate.container_sha256,
+        "nested_entry_index": candidate.payload_index,
+        "nested_payload_id": candidate.payload_id,
+    }
+
+
+def _select_and_record_assets(
+    *,
+    records: list[SourceRecord],
+    output: Path,
+    limits: dict[str, int | float],
+    video_candidates: list[Candidate],
+    image_candidates: list[Candidate],
+    video_member: str | None,
+    image_member: str | None,
+    manifest: dict[str, Any],
+) -> tuple[Candidate | None, Candidate | NestedCandidate | None]:
+    """Select video/image candidates, including the nested-NXPK fallback."""
+
+    selected_video, video_failures = _select_candidate("video", video_candidates, video_member)
+    selected_direct_image, image_failures = _select_candidate("image", image_candidates, image_member)
+    selected_image: Candidate | NestedCandidate | None = selected_direct_image
+    if selected_image is None and image_member is None:
+        nested_image, nested_failures = _find_nested_nxpk_image(records, output, limits)
+        image_failures.extend(nested_failures)
+        selected_image = nested_image
+
+    manifest["selection"]["candidate_rejections"]["video"] = video_failures
+    manifest["selection"]["candidate_rejections"]["image"] = image_failures
+    if selected_video is not None:
+        manifest["selection"]["video"] = _selection_record(selected_video)
+    else:
+        _record_failure(manifest, "video", "selection", "; ".join(video_failures))
+    if selected_image is not None:
+        manifest["selection"]["image"] = _selection_record(selected_image)
+    else:
+        _record_failure(manifest, "image", "selection", "; ".join(image_failures))
+    return selected_video, selected_image
+
+
+def _restore_selected_assets(
+    selected_video: Candidate | None,
+    selected_image: Candidate | NestedCandidate | None,
+    output: Path,
+    limits: dict[str, int | float],
+    manifest: dict[str, Any],
+) -> None:
+    """Restore both selected members or record the first restore failure."""
+
+    if selected_video is None or selected_image is None:
+        return
+    selected_assets = [("video", selected_video), ("image", selected_image)]
+    total_selected_bytes = sum(
+        candidate.info.file_size if isinstance(candidate, Candidate) else len(candidate.payload)
+        for _, candidate in selected_assets
+    )
+    if total_selected_bytes > limits["max_total_bytes"]:
+        _record_failure(
+            manifest,
+            "selection",
+            "limits",
+            f"selected members exceed total output limit ({total_selected_bytes} > {limits['max_total_bytes']})",
+        )
+        return
+
+    for kind, candidate in selected_assets:
+        try:
+            if isinstance(candidate, NestedCandidate):
+                asset = _extract_nested_candidate(candidate, output)
             else:
-                for kind, candidate in selected_assets:
-                    try:
-                        if isinstance(candidate, NestedCandidate):
-                            asset = _extract_nested_candidate(candidate, output)
-                        else:
-                            asset = _extract_candidate(candidate, output, kind, limits)
-                        manifest["assets"].append(asset)
-                    except (OSError, PermissionError, RuntimeError, ValueError, MinimalRestoreError) as exc:
-                        member_name = (
-                            candidate.container_member
-                            if isinstance(candidate, NestedCandidate)
-                            else candidate.normalized_member
-                        )
-                        _record_failure(manifest, member_name, "restore", str(exc))
-                        break
-    finally:
-        _verify_sources_after(records, source_rows, manifest)
+                asset = _extract_candidate(candidate, output, kind, limits)
+            manifest["assets"].append(asset)
+        except (OSError, PermissionError, RuntimeError, ValueError, MinimalRestoreError) as exc:
+            member_name = (
+                candidate.container_member
+                if isinstance(candidate, NestedCandidate)
+                else candidate.normalized_member
+            )
+            _record_failure(manifest, member_name, "restore", str(exc))
+            break
+
+
+def _finalize_manifest(output: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    """Derive summary/status from verified assets and publish the manifest."""
 
     completed_assets = [asset for asset in manifest["assets"] if asset.get("status") == "complete"]
     manifest["summary"]["assets_completed"] = len(completed_assets)
@@ -924,6 +957,50 @@ def run_minimal_restore_test(
         manifest["status"] = "failed"
     _write_manifest(output, manifest)
     return manifest
+
+
+def run_minimal_restore_test(
+    source_paths: Iterable[str | os.PathLike[str]],
+    output_dir: str | os.PathLike[str],
+    *,
+    video_member: str | None = None,
+    image_member: str | None = None,
+    expected_source_sha256: Iterable[str] | None = None,
+    max_member_bytes: int = DEFAULT_MAX_MEMBER_BYTES,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+    max_ratio: float = DEFAULT_MAX_RATIO,
+) -> dict[str, Any]:
+    """Run the Python-only two-member test and return its manifest object."""
+
+    records, output, limits = _prepare_run(
+        source_paths,
+        output_dir,
+        expected_source_sha256,
+        max_member_bytes,
+        max_total_bytes,
+        max_ratio,
+    )
+    manifest = _new_manifest(records, output, limits)
+    source_rows = manifest["sources"]
+
+    try:
+        video_candidates, image_candidates = _preflight_sources(
+            records, source_rows, limits, manifest
+        )
+        selected_video, selected_image = _select_and_record_assets(
+            records=records,
+            output=output,
+            limits=limits,
+            video_candidates=video_candidates,
+            image_candidates=image_candidates,
+            video_member=video_member,
+            image_member=image_member,
+            manifest=manifest,
+        )
+        _restore_selected_assets(selected_video, selected_image, output, limits, manifest)
+    finally:
+        _verify_sources_after(records, source_rows, manifest)
+    return _finalize_manifest(output, manifest)
 
 
 def _build_parser() -> argparse.ArgumentParser:
