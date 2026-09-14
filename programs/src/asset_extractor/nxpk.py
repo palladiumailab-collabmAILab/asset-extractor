@@ -55,14 +55,41 @@ def _read_entries(
 ) -> tuple[int, list[tuple[int, ...]], int]:
     size = source.stat().st_size
     with source.open("rb") as handle:
-        header = handle.read(20)
-        if len(header) != 20 or header[:4] != b"NXPK":
+        # NeoX NPK files use five uint32 values after the magic (24 bytes in
+        # total): count, var1, encrypt mode, hash mode, and index offset.  A
+        # small legacy fixture used by the repository predates the final
+        # value and has a 20-byte header; detect that form only when its index
+        # is the only candidate that remains inside the source bounds.
+        header = handle.read(24)
+        if len(header) < 20 or header[:4] != b"NXPK":
             raise ExtractionError(f"not an NXPK archive: {source}")
         count = struct.unpack_from("<I", header, 4)[0]
-        index_offset = struct.unpack_from("<I", header, 16)[0]
         if count > max_entries:
             raise ExtractionError(f"NXPK entry limit exceeded: {count} > {max_entries}")
-        if count and index_offset < len(header):
+        candidate_20 = struct.unpack_from("<I", header, 16)[0]
+        candidate_24 = struct.unpack_from("<I", header, 20)[0] if len(header) >= 24 else None
+        valid_24 = (
+            candidate_24 is not None
+            and candidate_24 >= 24
+            and candidate_24 <= size
+            and count <= (size - candidate_24) // 32
+        )
+        valid_20 = (
+            candidate_20 >= 20
+            and candidate_20 <= size
+            and count <= (size - candidate_20) // 32
+        )
+        if valid_24 and valid_20:
+            raise ExtractionError("ambiguous NXPK header/index layout")
+        if valid_24:
+            index_offset = candidate_24
+            header_size = 24
+        elif valid_20:
+            index_offset = candidate_20
+            header_size = 20
+        else:
+            raise ExtractionError("NXPK index exceeds archive size")
+        if count and index_offset < header_size:
             raise ExtractionError("NXPK index starts inside archive header")
         if index_offset > size or count > (size - index_offset) // 32:
             raise ExtractionError("NXPK index exceeds archive size")
@@ -76,7 +103,7 @@ def _read_entries(
     total_unpacked = 0
     for entry in entries:
         _, _, offset, packed, unpacked, _, _, flags = entry
-        if offset < len(header):
+        if offset < header_size:
             raise ExtractionError("NXPK entry starts inside archive header")
         _checked_span(offset, packed, size, "entry")
         if packed > max_member_bytes or unpacked > max_member_bytes:

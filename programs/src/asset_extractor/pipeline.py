@@ -268,12 +268,41 @@ def _extract_zip(source: Path, destination: Path, limits: dict[str, int | float]
         return rows
 
 
-def _manifest_entry(source: Path, source_root: str, entry: dict[str, Any]) -> dict[str, Any]:
+def _manifest_entry(
+    source: Path,
+    source_root: str,
+    source_input_index: int,
+    source_sha256: str,
+    entry: dict[str, Any],
+) -> dict[str, Any]:
+    kind = entry.get("kind", "nxpk")
+    logical_path = entry["path"] if kind == "zip" else None
+    logical_path_status = "archive-member-path" if logical_path else "unavailable-in-nxpk-index"
+    asset_type = Path(entry["path"]).suffix.lower().lstrip(".") or "unknown"
+    asset_id = config_hash(
+        {
+            "source_sha256": source_sha256,
+            "kind": kind,
+            "logical_path": logical_path,
+            "index": entry.get("index"),
+            "payload_id": entry.get("payload_id"),
+            "offset": entry.get("offset"),
+            "packed_bytes": entry.get("packed_bytes"),
+        }
+    )
     return {
+        "asset_id": asset_id,
         "source": source.name,
+        "source_input_index": source_input_index,
+        "source_sha256": source_sha256,
         "path": entry["path"],
         "output_path": f"{source_root}/{entry['path']}",
-        "kind": entry.get("kind", "nxpk"),
+        "kind": kind,
+        "backend": f"builtin-{kind}",
+        "logical_path": logical_path,
+        "logical_path_status": logical_path_status,
+        "asset_type": asset_type,
+        "parent_asset_id": None,
         "status": entry["status"],
         "bytes": entry["bytes"],
         "sha256": entry["sha256"],
@@ -446,7 +475,13 @@ def extract_inputs(
                     extracted_entries = extract_nxpk(source, target, effective_limits)["entries"]
                 else:
                     raise ExtractionError(f"unsupported input format: {source}")
-                output_rows.extend(_manifest_entry(source, source_root, entry) for entry in extracted_entries)
+                source_sha256 = input_row["source_sha256_before"]
+                if not isinstance(source_sha256, str):
+                    raise ExtractionError(f"source SHA-256 is unavailable for {source.name}")
+                output_rows.extend(
+                    _manifest_entry(source, source_root, index - 1, source_sha256, entry)
+                    for entry in extracted_entries
+                )
                 input_row["status"] = "ok"
                 processed += 1
             except (OSError, ExtractionError, zipfile.BadZipFile) as exc:

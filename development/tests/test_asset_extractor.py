@@ -74,6 +74,26 @@ class AssetExtractorTests(unittest.TestCase):
     def make_nxpk(self, name: str = "sample.npk") -> Path:
         return self.make_nxpk_entries(name, [(b"NXPK fixture payload", 0, None)])
 
+    def make_real_header_nxpk(self, name: str = "real-header.npk") -> Path:
+        path = self.root / name
+        payload = b"real 24-byte NXPK header"
+        index_offset = 24
+        data_offset = index_offset + 32
+        entry = struct.pack(
+            "<8I",
+            0x5678,
+            0,
+            data_offset,
+            len(payload),
+            len(payload),
+            0,
+            0,
+            0,
+        )
+        header = b"NXPK" + struct.pack("<IIIII", 1, 0, 0, 0, index_offset)
+        path.write_bytes(header + entry + payload)
+        return path
+
     def test_scan_reports_zip_entries_and_hash(self) -> None:
         source = self.make_zip("sample.apk", [("assets/icon.txt", b"hello")])
         report = self.root / "scan.json"
@@ -102,7 +122,38 @@ class AssetExtractorTests(unittest.TestCase):
         self.assertTrue(row["source_unchanged"])
         saved = json.loads((destination / "run-manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["outputs"]["files"][0]["sha256"], hashlib.sha256(b"payload").hexdigest())
+        entry = saved["entries"][0]
+        self.assertRegex(entry["asset_id"], r"^[0-9a-f]{64}$")
+        self.assertEqual(entry["source_input_index"], 0)
+        self.assertEqual(entry["source_sha256"], before)
+        self.assertEqual(entry["backend"], "builtin-zip")
+        self.assertEqual(entry["logical_path"], "res/data.bin")
+        self.assertEqual(entry["logical_path_status"], "archive-member-path")
+        self.assertEqual(entry["asset_type"], "bin")
+        self.assertIsNone(entry["parent_asset_id"])
         self.assertEqual(validate_manifest(saved, destination / "extracted"), [])
+
+    def test_asset_id_is_stable_across_fresh_output_directories(self) -> None:
+        source = self.make_zip("stable.zip", [("res/model.mesh", b"same payload")])
+        first = extract_inputs([str(source)], self.root / "stable-run-a")
+        second = extract_inputs([str(source)], self.root / "stable-run-b")
+        self.assertEqual(first["entries"][0]["asset_id"], second["entries"][0]["asset_id"])
+
+    def test_manifest_validation_accepts_legacy_entries_without_provenance_extension(self) -> None:
+        source = self.make_zip("legacy.zip", [("res/data.bin", b"payload")])
+        manifest = extract_inputs([str(source)], self.root / "legacy-run")
+        for key in (
+            "asset_id",
+            "source_input_index",
+            "source_sha256",
+            "backend",
+            "logical_path",
+            "logical_path_status",
+            "asset_type",
+            "parent_asset_id",
+        ):
+            manifest["entries"][0].pop(key)
+        self.assertEqual(validate_manifest(manifest), [])
 
     def test_missing_input_fails_before_creating_output_and_records_audit_fields(self) -> None:
         destination = self.root / "run-missing"
@@ -228,6 +279,23 @@ class AssetExtractorTests(unittest.TestCase):
         self.assertTrue(entry["size_checked"])
         self.assertEqual(entry["actual_read_bytes"], entry["packed_bytes"])
         self.assertEqual(entry["actual_unpacked_bytes"], entry["declared_unpacked_bytes"])
+        self.assertRegex(entry["asset_id"], r"^[0-9a-f]{64}$")
+        self.assertEqual(entry["source_input_index"], 0)
+        self.assertEqual(entry["source_sha256"], hashlib.sha256(source.read_bytes()).hexdigest())
+        self.assertEqual(entry["backend"], "builtin-nxpk")
+        self.assertIsNone(entry["logical_path"])
+        self.assertEqual(entry["logical_path_status"], "unavailable-in-nxpk-index")
+        self.assertEqual(entry["asset_type"], "bin")
+        self.assertIsNone(entry["parent_asset_id"])
+
+    def test_real_nxpk_24_byte_header_is_extracted(self) -> None:
+        source = self.make_real_header_nxpk()
+        manifest = extract_inputs([str(source)], self.root / "real-header-run")
+        self.assertEqual(manifest["status"], "complete")
+        self.assertEqual(
+            (self.root / "real-header-run/extracted/001-real-header/0000000_00005678.bin").read_bytes(),
+            b"real 24-byte NXPK header",
+        )
 
     def test_nxpk_max_total_bytes_is_enforced(self) -> None:
         source = self.make_nxpk_entries("total.npk", [(b"12345", 0, None), (b"67890", 0, None)])

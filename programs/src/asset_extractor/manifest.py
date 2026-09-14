@@ -65,6 +65,16 @@ _ENTRY_KEYS = {
     "compression_flag",
     "encrypted",
 }
+_ENTRY_OPTIONAL_KEYS = {
+    "asset_id",
+    "source_input_index",
+    "source_sha256",
+    "backend",
+    "logical_path",
+    "logical_path_status",
+    "asset_type",
+    "parent_asset_id",
+}
 _FAILURE_KEYS = {"path", "error", "stage"}
 _CLAIM_KEYS = {"claim", "certainty"}
 _SCAN_ENTRY_KEYS = {"path", "bytes", "compressed_bytes", "is_directory", "crc32"}
@@ -76,6 +86,25 @@ def _check_keys(value: Any, expected: set[str], label: str, errors: list[str]) -
         return False
     unexpected = sorted(set(value) - expected)
     missing = sorted(expected - set(value))
+    if unexpected:
+        errors.append(f"{label} has unexpected keys: {', '.join(unexpected)}")
+    if missing:
+        errors.append(f"{label} is missing keys: {', '.join(missing)}")
+    return not unexpected and not missing
+
+
+def _check_keys_with_optional(
+    value: Any,
+    required: set[str],
+    optional: set[str],
+    label: str,
+    errors: list[str],
+) -> bool:
+    if not isinstance(value, dict):
+        errors.append(f"{label} must be an object")
+        return False
+    unexpected = sorted(set(value) - required - optional)
+    missing = sorted(required - set(value))
     if unexpected:
         errors.append(f"{label} has unexpected keys: {', '.join(unexpected)}")
     if missing:
@@ -243,7 +272,7 @@ def validate_manifest(manifest: Any, output_root: str | Path | None = None) -> l
     else:
         for index, item in enumerate(entries):
             label = f"entries[{index}]"
-            if not _check_keys(item, _ENTRY_KEYS, label, errors):
+            if not _check_keys_with_optional(item, _ENTRY_KEYS, _ENTRY_OPTIONAL_KEYS, label, errors):
                 continue
             for key in ("source", "path", "output_path", "kind", "status"):
                 if not isinstance(item[key], str) or not item[key]:
@@ -259,6 +288,27 @@ def validate_manifest(manifest: Any, output_root: str | Path | None = None) -> l
                 errors.append(f"{label}.status must be ok for a recorded output")
             if item["actual_unpacked_bytes"] != item["bytes"]:
                 errors.append(f"{label}.actual_unpacked_bytes must equal bytes")
+            if "asset_id" in item:
+                _check_sha(item["asset_id"], f"{label}.asset_id", errors, nullable=False)
+            if "source_input_index" in item:
+                _check_nonnegative_int(
+                    item["source_input_index"], f"{label}.source_input_index", errors
+                )
+            if "source_sha256" in item:
+                _check_sha(item["source_sha256"], f"{label}.source_sha256", errors, nullable=False)
+            if "backend" in item and (
+                not isinstance(item["backend"], str) or not item["backend"]
+            ):
+                errors.append(f"{label}.backend must be a non-empty string")
+            if "logical_path" in item and item["logical_path"] is not None and (
+                not isinstance(item["logical_path"], str) or not item["logical_path"]
+            ):
+                errors.append(f"{label}.logical_path must be a non-empty string or null")
+            for key in ("logical_path_status", "asset_type"):
+                if key in item and (not isinstance(item[key], str) or not item[key]):
+                    errors.append(f"{label}.{key} must be a non-empty string")
+            if "parent_asset_id" in item:
+                _check_sha(item["parent_asset_id"], f"{label}.parent_asset_id", errors)
 
     failures = manifest["failures"]
     if not isinstance(failures, list):

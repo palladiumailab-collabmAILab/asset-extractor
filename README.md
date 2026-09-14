@@ -32,8 +32,25 @@ python programs/asset_extractor.py validate-manifest output/runs/sample/run-mani
 python -m unittest discover -s development/tests -t .
 ```
 
+BlueStacksのADBで通常に読み取れるOnmyoji `OptionRes`を、新しいsnapshotへ
+取得する場合は次を使用します。転送前後のremote metadataと全local SHA-256は
+`snapshot-manifest.json`へ記録されます。
+
+```powershell
+python programs/pull_bluestacks_snapshot.py `
+  --adb C:\Android\platform-tools\adb.exe `
+  --serial 127.0.0.1:5555 `
+  --output C:\Onmyoji-Snapshots\device-assets-new `
+  --include-installed-apks
+```
+
+既存出力の再利用、root、`run-as`、アクセス制御の回避は行いません。詳しい指定は
+[programs/README.md](programs/README.md)を参照してください。
+
 実装計画とSol midのレビュー結果は [development/PLAN.md](development/PLAN.md)、
 引き継ぎ状況は `development/work/codex-progress.md` にあります。
+NetEase / NeoX OSS、3D＋テクスチャ、参照画像照合を一体化する改良計画は
+`development/NETEASE_ASSET_PIPELINE_PLAN.md` にあります。
 
 ## 安全境界
 
@@ -62,3 +79,7 @@ python -m unittest discover -s development/tests -t .
   一括実行できる。
 - NXPKはentry数・各entryのarchive bounds・実読取長・圧縮後サイズ・総展開量・未知
   flagを検証する。未知の圧縮方式やflagはfail-closedで拒否する。
+- 新しい抽出entryは、source SHA-256とentry identityから作る安定`asset_id`、
+  backend、asset type、論理パスの有無と理由を保持する。ZIP member pathは既知の
+  論理パスとして記録し、名前を持たないNXPK indexは`null`と未取得理由を記録する。
+  `parent_asset_id`は後続のPNG/glTF等をraw entryへ結ぶために予約する。

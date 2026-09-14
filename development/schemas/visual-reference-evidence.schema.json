@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/asset-extractor/visual-reference-evidence.schema.json",
+  "title": "Visual reference evidence map",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "character_id", "references", "variants", "unresolved"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "character_id": {"type": "string", "minLength": 1},
+    "source_ref": {"type": "string", "minLength": 1},
+    "references": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/reference"}
+    },
+    "variants": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/variant"}
+    },
+    "unresolved": {
+      "type": "array",
+      "items": {"type": "object"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference_id", "kind", "label"],
+      "properties": {
+        "reference_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "kind": {"enum": ["image", "webpage", "document"]},
+        "label": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "path": {"type": "string", "minLength": 1},
+        "source_ref": {"type": "string", "minLength": 1},
+        "url": {"type": "string", "format": "uri"},
+        "note": {"type": "string"}
+      },
+      "anyOf": [
+        {"required": ["path"]},
+        {"required": ["source_ref"]},
+        {"required": ["url"]}
+      ],
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "image"}}},
+          "then": {"required": ["sha256"]}
+        }
+      ]
+    },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variant_id", "logical_path", "status", "confidence"],
+      "properties": {
+        "character_id": {"type": "string", "minLength": 1},
+        "variant_id": {"type": "string", "minLength": 1},
+        "logical_path": {"type": "string", "minLength": 1},
+        "status": {"enum": ["verified", "auxiliary", "candidate", "unresolved"]},
+        "confidence": {"enum": ["high", "medium", "low", "unknown"]},
+        "reference_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"}
+        },
+        "label_ja": {"type": "string"},
+        "evidence_ref": {"type": "string"},
+        "evidence_note": {"type": "string"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "verified"}}},
+          "then": {
+            "properties": {
+              "confidence": {"const": "high"},
+              "reference_ids": {"minItems": 1},
+              "evidence_ref": {"minLength": 1},
+              "evidence_note": {"minLength": 1}
+            },
+            "required": ["reference_ids", "evidence_ref", "evidence_note"]
+          }
+        }
+      ]
+    }
+  }
+}

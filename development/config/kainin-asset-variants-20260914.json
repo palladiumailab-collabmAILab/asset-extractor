@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "character_id": "hairen",
+  "source_ref": "development/evidence/kainin-reference-mapping-20260914.md",
+  "references": [
+    {
+      "reference_id": "hairen-awakened-sheet",
+      "kind": "image",
+      "label": "海忍 覚醒前／覚醒後キャラクターシート",
+      "source_ref": "user-provided-image:character-sheet",
+      "sha256": "88bf36800c3b4fa57c78de2c9bb7561a0703c5aa5ceee8a84a441333b1461cbd"
+    },
+    {
+      "reference_id": "hairen-red-snake",
+      "kind": "image",
+      "label": "海忍 黒髪・赤装束・蛇",
+      "source_ref": "user-provided-image:red-snake",
+      "sha256": "1e5ce6101e0c80bbaa719311df3f1779dc2f6eaf26f69c680b908ad311a50b10"
+    },
+    {
+      "reference_id": "hairen-orange-water",
+      "kind": "image",
+      "label": "海忍 橙白・水／鯉モチーフ",
+      "source_ref": "user-provided-image:orange-water",
+      "sha256": "80f0448a1600c36d059e086c6825666737e9aa17738521fdb53e87d3a28b85e6"
+    }
+  ],
+  "variants": [
+    {
+      "variant_id": "awakened",
+      "logical_path": "model/j_hairen/j_hairen.mesh",
+      "status": "verified",
+      "confidence": "high",
+      "reference_ids": ["hairen-awakened-sheet"],
+      "label_ja": "覚醒後",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果",
+      "evidence_note": "Photo 1 下段の白髪・白青・背後の青い蛇と、ordered submesh 3件のレンダーが一致。"
+    },
+    {
+      "variant_id": "s3-red-snake-outfit",
+      "logical_path": "model/s3_hairen/s3_hairen.mesh",
+      "status": "verified",
+      "confidence": "high",
+      "reference_ids": ["hairen-red-snake"],
+      "label_ja": "赤装束・蛇柄",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果",
+      "evidence_note": "Photo 2 の黒髪・赤装束・蛇柄と、s3_hairen の1024x1024 KTX/同一UVレンダーが一致。"
+    },
+    {
+      "variant_id": "s2-orange-water-outfit",
+      "logical_path": "model/s2_hairen/s2_hairen.mesh",
+      "status": "verified",
+      "confidence": "high",
+      "reference_ids": ["hairen-orange-water"],
+      "label_ja": "橙白・水／鯉モチーフ",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果",
+      "evidence_note": "Photo 3 のオレンジ・白・水／鯉モチーフと、s2_hairen のテクスチャ／モデルが一致。"
+    },
+    {
+      "variant_id": "c1-auxiliary",
+      "logical_path": "model/c1_hairen/c1_hairen.mesh",
+      "status": "auxiliary",
+      "confidence": "low",
+      "label_ja": "補助候補 c1",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果",
+      "evidence_note": "候補は存在するが参照画像の衣装と一致する証拠が不足。"
+    },
+    {
+      "variant_id": "s2-show-auxiliary",
+      "logical_path": "model/s2_hairen_show/s2_hairen_show.mesh",
+      "status": "auxiliary",
+      "confidence": "low",
+      "label_ja": "表示用派生候補",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果",
+      "evidence_note": "s2_hairen の表示用／派生構成と見られ、正解モデルの代表には採用しない。"
+    }
+  ],
+  "unresolved": [
+    {
+      "label_ja": "覚醒前",
+      "reason": "2D正解画像はあるが、静的3Dの完全一致は未確定。",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果"
+    }
+  ]
+}

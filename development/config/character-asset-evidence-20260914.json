@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "character_id": "multi",
+  "source_ref": "development/evidence/character-asset-join-full-20260914.md",
+  "references": [
+    {
+      "reference_id": "ibaraki-official-announcement",
+      "kind": "webpage",
+      "label": "Ibaraki Douji - Hellfire Warlord official announcement",
+      "url": "https://news.17173.com/z/yys/content/12102018/150252081.shtml?from=mxw",
+      "note": "Official 17173 article title and image set identify 鬼骸之握 (Hellfire Warlord)."
+    },
+    {
+      "reference_id": "ibaraki-gallery",
+      "kind": "webpage",
+      "label": "Ibaraki Douji skin gallery",
+      "url": "https://onmyoji.fandom.com/wiki/Ibaraki_Douji/Gallery",
+      "note": "Gallery lists 鬼骸之握 / Hellfire Warlord among Ibaraki Douji skins."
+    },
+    {
+      "reference_id": "ibaraki-japanese-list",
+      "kind": "webpage",
+      "label": "Japanese Ibaraki Douji skin list",
+      "url": "https://kamigame.jp/%E9%99%B0%E9%99%BD%E5%B8%AB/%E5%BC%8F%E7%A5%9E/%E8%8C%A8%E6%9C%A8%E7%AB%A5%E5%AD%90.html",
+      "note": "Japanese list labels the same purple/black skin 鬼骸の拳（商店）."
+    },
+    {
+      "reference_id": "ibaraki-user-photo-5",
+      "kind": "image",
+      "label": "User-provided Ibaraki variant screenshots",
+      "source_ref": "user-provided-image:5-Photo-5.jpg",
+      "sha256": "b19c637a27284364f777d6bddd876ebdf281349c1bac04eb046c4b44463dd008",
+      "note": "Photo 5 上段の紫黒甲冑・紫炎骨装具が s4 のレンダーと一致。直後の雪夜修羅見出しは下段の赤髪モデルに対応する。"
+    },
+    {
+      "reference_id": "hairen-awakened-sheet",
+      "kind": "image",
+      "label": "海忍 覚醒前／覚醒後キャラクターシート",
+      "source_ref": "user-provided-image:character-sheet",
+      "sha256": "88bf36800c3b4fa57c78de2c9bb7561a0703c5aa5ceee8a84a441333b1461cbd"
+    },
+    {
+      "reference_id": "hairen-red-snake",
+      "kind": "image",
+      "label": "海忍 黒髪・赤装束・蛇",
+      "source_ref": "user-provided-image:red-snake",
+      "sha256": "1e5ce6101e0c80bbaa719311df3f1779dc2f6eaf26f69c680b908ad311a50b10"
+    },
+    {
+      "reference_id": "hairen-orange-water",
+      "kind": "image",
+      "label": "海忍 橙白・水／鯉モチーフ",
+      "source_ref": "user-provided-image:orange-water",
+      "sha256": "80f0448a1600c36d059e086c6825666737e9aa17738521fdb53e87d3a28b85e6"
+    }
+  ],
+  "variants": [
+    {
+      "character_id": "hairen",
+      "variant_id": "awakened",
+      "logical_path": "model/j_hairen/j_hairen.mesh",
+      "status": "verified",
+      "confidence": "high",
+      "reference_ids": ["hairen-awakened-sheet"],
+      "label_ja": "覚醒後",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果",
+      "evidence_note": "Photo 1 下段の白髪・白青・背後の青い蛇と、ordered submesh 3件のレンダーが一致。"
+    },
+    {
+      "character_id": "hairen",
+      "variant_id": "s3-red-snake-outfit",
+      "logical_path": "model/s3_hairen/s3_hairen.mesh",
+      "status": "verified",
+      "confidence": "high",
+      "reference_ids": ["hairen-red-snake"],
+      "label_ja": "赤装束・蛇柄",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果",
+      "evidence_note": "Photo 2 の黒髪・赤装束・蛇柄と、s3_hairen の1024x1024 KTX/同一UVレンダーが一致。"
+    },
+    {
+      "character_id": "hairen",
+      "variant_id": "s2-orange-water-outfit",
+      "logical_path": "model/s2_hairen/s2_hairen.mesh",
+      "status": "verified",
+      "confidence": "high",
+      "reference_ids": ["hairen-orange-water"],
+      "label_ja": "橙白・水／鯉モチーフ",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果",
+      "evidence_note": "Photo 3 のオレンジ・白・水／鯉モチーフと、s2_hairen のテクスチャ／モデルが一致。"
+    },
+    {
+      "character_id": "hairen",
+      "variant_id": "c1-auxiliary",
+      "logical_path": "model/c1_hairen/c1_hairen.mesh",
+      "status": "auxiliary",
+      "confidence": "low",
+      "label_ja": "補助候補 c1",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果",
+      "evidence_note": "候補は存在するが参照画像の衣装と一致する証拠が不足。"
+    },
+    {
+      "character_id": "hairen",
+      "variant_id": "s2-show-auxiliary",
+      "logical_path": "model/s2_hairen_show/s2_hairen_show.mesh",
+      "status": "auxiliary",
+      "confidence": "low",
+      "label_ja": "表示用派生候補",
+      "evidence_ref": "development/evidence/kainin-reference-mapping-20260914.md#照合結果",
+      "evidence_note": "s2_hairen の表示用／派生構成と見られ、正解モデルの代表には採用しない。"
+    },
+    {
+      "character_id": "cimutongzi",
+      "variant_id": "s4-oni-gai-no-nigiri",
+      "logical_path": "model/s4_cimutongzi/s4_cimutongzi.mesh",
+      "status": "verified",
+      "confidence": "high",
+      "reference_ids": [
+        "ibaraki-user-photo-5",
+        "ibaraki-official-announcement",
+        "ibaraki-gallery",
+        "ibaraki-japanese-list"
+      ],
+      "label_ja": "鬼骸の拳",
+      "evidence_ref": "development/evidence/ibaraki-outfit-mapping-20260914.md#照合結果",
+      "evidence_note": "抽出 glTF の紫黒甲冑・金紫帯・角・右肩の棘付き大袖／骨状装具が、17173公式告知の鬼骸之握（日本語版: 鬼骸の拳）立ち絵、およびユーザー提供 Photo 5 上段と一致。SSR 茨木童子の衣装であり、SP 煉獄茨木童子とは別ID。"
+    }
+  ],
+  "unresolved": []
+}

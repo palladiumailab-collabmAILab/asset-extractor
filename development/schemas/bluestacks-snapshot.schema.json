@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/asset-extractor/bluestacks-snapshot.schema.json",
+  "title": "BlueStacks raw acquisition snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "created_at", "completed_at", "status",
+    "tool", "adb", "configuration", "policy", "remote_roots", "files",
+    "summary", "failures", "claims"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "operation": {"const": "capture-bluestacks-raw"},
+    "created_at": {"type": "string", "minLength": 1},
+    "completed_at": {"type": "string", "minLength": 1},
+    "status": {"enum": ["complete", "incomplete"]},
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "sha256"],
+      "properties": {
+        "name": {"const": "pull_bluestacks_snapshot.py"},
+        "version": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "adb": {"type": "object"},
+    "configuration": {"type": "object"},
+    "policy": {"type": "object"},
+    "remote_roots": {"type": "array", "items": {"type": "object"}},
+    "files": {"type": "array", "items": {"$ref": "#/$defs/file"}},
+    "summary": {"type": "object"},
+    "failures": {"type": "array", "items": {"type": "object"}},
+    "claims": {"type": "array", "items": {"type": "object"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "metadata": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["size", "mtime_unix"],
+      "properties": {
+        "size": {"type": "integer", "minimum": 0},
+        "mtime_unix": {"type": "integer", "minimum": 0}
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset_id", "source_kind", "remote_root", "remote_path",
+        "relative_path", "local_path", "bytes", "sha256", "remote_before",
+        "remote_after", "remote_unchanged", "acquisition_method"
+      ],
+      "properties": {
+        "asset_id": {"$ref": "#/$defs/sha256"},
+        "source_kind": {"enum": ["remote-file", "installed-apk"]},
+        "remote_root": {"type": "string", "minLength": 1},
+        "remote_path": {"type": "string", "pattern": "^/"},
+        "relative_path": {"type": "string", "minLength": 1},
+        "local_path": {"type": "string", "minLength": 1},
+        "bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "remote_before": {"$ref": "#/$defs/metadata"},
+        "remote_after": {"$ref": "#/$defs/metadata"},
+        "remote_unchanged": {"type": ["boolean", "null"]},
+        "acquisition_method": {"const": "adb-pull-read-only"}
+      }
+    }
+  }
+}

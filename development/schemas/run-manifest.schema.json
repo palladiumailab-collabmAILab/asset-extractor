@@ -150,7 +150,15 @@
         "bounds_checked": {"type": "boolean"},
         "size_checked": {"type": "boolean"},
         "compression_flag": {"type": ["integer", "null"], "minimum": 0},
-        "encrypted": {"type": "boolean"}
+        "encrypted": {"type": "boolean"},
+        "asset_id": {"$ref": "#/$defs/sha256"},
+        "source_input_index": {"type": "integer", "minimum": 0},
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "backend": {"type": "string", "minLength": 1},
+        "logical_path": {"type": ["string", "null"], "minLength": 1},
+        "logical_path_status": {"type": "string", "minLength": 1},
+        "asset_type": {"type": "string", "minLength": 1},
+        "parent_asset_id": {"$ref": "#/$defs/nullableSha256"}
       }
     },
     "failure": {
