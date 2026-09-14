@@ -69,6 +69,13 @@ class PrepareTexturedRuntimeTests(unittest.TestCase):
             )
         run.assert_not_called()
 
+    def test_upstream_import_preflight_restores_sys_path_on_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            original_path = list(sys.path)
+            with self.assertRaises(ImportError):
+                MODULE.load_neoxtractor_modules(Path(temporary))
+            self.assertEqual(sys.path, original_path)
+
 
 if __name__ == "__main__":
     unittest.main()

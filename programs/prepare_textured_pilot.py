@@ -44,6 +44,24 @@ class PublicationError(ValueError):
     pass
 
 
+def load_neoxtractor_modules(source_tree: Path) -> tuple[Any, Any, Any, Any, Any]:
+    """Load the pinned upstream components without leaking import-path state."""
+
+    original_sys_path = sys.path.copy()
+    sys.path.insert(0, str(source_tree))
+    try:
+        from core.images import convert_image  # type: ignore[import-not-found]
+        from core.mesh_converter.formats import gltf  # type: ignore[import-not-found]
+        from core.mesh_loader import MeshLoader  # type: ignore[import-not-found]
+        from core.mesh_loader.types import Bones  # type: ignore[import-not-found]
+        from core.npk.npkhash_v1 import mesh_hash  # type: ignore[import-not-found]
+        return convert_image, gltf, MeshLoader, Bones, mesh_hash
+    finally:
+        # Importing an upstream package may add more entries than the one we
+        # supplied, so restore the complete caller state.
+        sys.path[:] = original_sys_path
+
+
 def runtime_dependency_report() -> dict[str, dict[str, Any]]:
     report: dict[str, dict[str, Any]] = {}
     for module_name, distribution_name in RUNTIME_DEPENDENCIES.items():
@@ -566,13 +584,8 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, json.JSONDecodeError, ValueError, AttributeError) as exc:
             raise SystemExit(f"invalid material override configuration: {exc}") from exc
 
-    sys.path.insert(0, str(source_tree))
     try:
-        from core.images import convert_image  # type: ignore[import-not-found]
-        from core.mesh_converter.formats import gltf  # type: ignore[import-not-found]
-        from core.mesh_loader import MeshLoader  # type: ignore[import-not-found]
-        from core.mesh_loader.types import Bones  # type: ignore[import-not-found]
-        from core.npk.npkhash_v1 import mesh_hash  # type: ignore[import-not-found]
+        convert_image, gltf, MeshLoader, Bones, mesh_hash = load_neoxtractor_modules(source_tree)
     except (ImportError, ModuleNotFoundError) as exc:
         print(f"textured publication failed: NeoXtractor import preflight: {exc}", file=sys.stderr)
         return 2
