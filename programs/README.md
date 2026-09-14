@@ -49,6 +49,10 @@ member with Python's standard-library `zipfile`, detects the container from
 magic bytes, and verifies the restored file's SHA-256, byte count, and CRC-32.
 It also hashes every source archive before and after the run. The script does
 not call an external extractor, shell, viewer, decoder, or extracted payload.
+If no image exists directly in the OBB, it checks nested NXPK members in
+ascending size order with the maintained Python parser and restores only the
+first magic-identified image payload. Temporary NXPK staging files are removed
+before the manifest is finalized.
 
 Every run directory must be new. A successful run writes
 `minimal-restore-manifest.json`, whose contract is

@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 import zlib
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .common import file_rows, sha256_file
 from .errors import ExtractionError
@@ -140,6 +140,75 @@ def _decompress_exact(data: bytes, expected: int, index: int) -> bytes:
     return result
 
 
+def _read_payload(handle: Any, entry: tuple[int, ...], index: int) -> tuple[bytes, int]:
+    payload_id, _, offset, packed, unpacked, _, _, flags = entry
+    handle.seek(offset)
+    data = handle.read(packed)
+    actual_read = len(data)
+    if actual_read != packed:
+        raise ExtractionError(
+            f"NXPK actual read length mismatch at entry {index}: {actual_read} != {packed}"
+        )
+    if flags & 0x10000:
+        data = bytes(value ^ ((150 + position) % 256) for position, value in enumerate(data[:128])) + data[128:]
+    if flags & 0xFFFF == 1:
+        data = _decompress_exact(data, unpacked, index)
+    if len(data) != unpacked:
+        raise ExtractionError(f"NXPK uncompressed size mismatch at entry {index}")
+    return data, actual_read
+
+
+def find_first_nxpk_payload(
+    source: Path,
+    limits: dict[str, int | float],
+    predicate: Callable[[bytes], bool],
+) -> dict[str, Any] | None:
+    """Return the first decoded payload accepted by ``predicate``.
+
+    The entire index and every payload are still bounds/size/decompression
+    checked before success is returned.  Only the selected payload is retained
+    in memory; callers can therefore restore one image without publishing the
+    complete archive.  The source archive is opened read-only.
+    """
+
+    count, entries, declared_total = _read_entries(
+        source,
+        int(limits["max_entries"]),
+        int(limits["max_member_bytes"]),
+        int(limits["max_total_bytes"]),
+        float(limits["max_ratio"]),
+    )
+    selected: dict[str, Any] | None = None
+    actual_total = 0
+    with source.open("rb") as handle:
+        for index, entry in enumerate(entries):
+            payload_id, _, offset, packed, unpacked, _, _, flags = entry
+            data, actual_read = _read_payload(handle, entry, index)
+            actual_total += len(data)
+            if actual_total > int(limits["max_total_bytes"]):
+                raise ExtractionError(
+                    f"NXPK total output limit exceeded while reading entry {index}"
+                )
+            if selected is None and predicate(data):
+                selected = {
+                    "index": index,
+                    "payload_id": payload_id,
+                    "offset": offset,
+                    "packed_bytes": packed,
+                    "declared_unpacked_bytes": unpacked,
+                    "actual_read_bytes": actual_read,
+                    "actual_unpacked_bytes": len(data),
+                    "compression_flag": flags & 0xFFFF,
+                    "encrypted": bool(flags & 0x10000),
+                    "data": data,
+                }
+    if actual_total != declared_total:
+        raise ExtractionError("NXPK total expanded size mismatch")
+    if count != len(entries):
+        raise ExtractionError("NXPK entry count changed while scanning")
+    return selected
+
+
 def extract_nxpk(source: Path, destination: Path, limits: dict[str, int | float]) -> dict[str, Any]:
     count, entries, declared_total = _read_entries(
         source,
@@ -154,19 +223,7 @@ def extract_nxpk(source: Path, destination: Path, limits: dict[str, int | float]
     with source.open("rb") as handle:
         for index, entry in enumerate(entries):
             payload_id, _, offset, packed, unpacked, _, _, flags = entry
-            handle.seek(offset)
-            data = handle.read(packed)
-            actual_read = len(data)
-            if actual_read != packed:
-                raise ExtractionError(
-                    f"NXPK actual read length mismatch at entry {index}: {actual_read} != {packed}"
-                )
-            if flags & 0x10000:
-                data = bytes(value ^ ((150 + position) % 256) for position, value in enumerate(data[:128])) + data[128:]
-            if flags & 0xFFFF == 1:
-                data = _decompress_exact(data, unpacked, index)
-            if len(data) != unpacked:
-                raise ExtractionError(f"NXPK uncompressed size mismatch at entry {index}")
+            data, actual_read = _read_payload(handle, entry, index)
             actual_total += len(data)
             if actual_total > int(limits["max_total_bytes"]):
                 raise ExtractionError(

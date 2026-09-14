@@ -20,9 +20,17 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import sys
+import tempfile
 import zipfile
 import zlib
 from typing import Any, Iterable
+
+
+PROGRAMS_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(PROGRAMS_ROOT / "src"))
+
+from asset_extractor.errors import ExtractionError  # noqa: E402
+from asset_extractor.nxpk import find_first_nxpk_payload  # noqa: E402
 
 
 TOOL_NAME = "run_minimal_restore_test"
@@ -72,6 +80,24 @@ class Candidate:
     info: zipfile.ZipInfo
     detection: dict[str, Any]
     validation_error: str | None = None
+
+
+@dataclass(frozen=True)
+class NestedCandidate:
+    source_index: int
+    source_path: Path
+    container_member: str
+    container_sha256: str
+    container_bytes: int
+    payload_index: int
+    payload_id: int
+    payload_offset: int
+    packed_bytes: int
+    declared_unpacked_bytes: int
+    compression_flag: int
+    encrypted: bool
+    payload: bytes
+    detection: dict[str, Any]
 
 
 def _utc_now() -> str:
@@ -257,6 +283,130 @@ def _safe_output_name(kind: str, candidate: Candidate) -> str:
     return f"{candidate.source_index:02d}-{basename}"
 
 
+def _copy_zip_member_to_path(
+    archive: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+    target: Path,
+    limits: dict[str, int | float],
+) -> tuple[str, int]:
+    validation_error = _zip_info_validation(info, limits)
+    if validation_error:
+        raise MinimalRestoreError(validation_error)
+    digest = hashlib.sha256()
+    crc = 0
+    size = 0
+    with archive.open(info, "r") as source_stream, target.open("wb") as output_stream:
+        while True:
+            block = source_stream.read(CHUNK_SIZE)
+            if not block:
+                break
+            output_stream.write(block)
+            digest.update(block)
+            crc = zlib.crc32(block, crc)
+            size += len(block)
+        output_stream.flush()
+        os.fsync(output_stream.fileno())
+    if size != info.file_size:
+        raise MinimalRestoreError(f"nested archive size mismatch: {size} != {info.file_size}")
+    if (crc & 0xFFFFFFFF) != (info.CRC & 0xFFFFFFFF):
+        raise MinimalRestoreError("nested archive CRC-32 mismatch")
+    return digest.hexdigest(), size
+
+
+def _find_nested_nxpk_image(
+    sources: list[SourceRecord],
+    output_dir: Path,
+    limits: dict[str, int | float],
+) -> tuple[NestedCandidate | None, list[str]]:
+    containers: list[tuple[int, SourceRecord, zipfile.ZipInfo, str]] = []
+    rejections: list[str] = []
+    for record in sources:
+        if not record.path.is_file():
+            continue
+        try:
+            with zipfile.ZipFile(record.path, "r") as archive:
+                for info in archive.infolist():
+                    if info.is_dir():
+                        continue
+                    try:
+                        normalized = _normalise_member_name(info.filename)
+                    except MinimalRestoreError as exc:
+                        if info.filename.lower().endswith(".npk"):
+                            rejections.append(f"skipped nested {info.filename}: {exc}")
+                        continue
+                    if PurePosixPath(normalized).suffix.lower() == ".npk":
+                        containers.append((info.file_size, record, info, normalized))
+        except (OSError, zipfile.BadZipFile) as exc:
+            rejections.append(f"cannot enumerate nested archives in {record.path}: {exc}")
+
+    for _declared_size, record, info, normalized in sorted(
+        containers,
+        key=lambda item: (item[0], item[1].index, item[3].casefold(), item[3]),
+    ):
+        validation_error = _zip_info_validation(info, limits)
+        if validation_error:
+            rejections.append(f"skipped nested {normalized}: {validation_error}")
+            continue
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                prefix=".minimal-restore-nested-",
+                suffix=".npk",
+                dir=output_dir,
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+            with zipfile.ZipFile(record.path, "r") as archive:
+                container_sha256, container_bytes = _copy_zip_member_to_path(
+                    archive,
+                    info,
+                    temporary_path,
+                    limits,
+                )
+            nxpk_limits = {
+                "max_entries": DEFAULT_MAX_ARCHIVE_ENTRIES,
+                "max_member_bytes": limits["max_member_bytes"],
+                "max_total_bytes": limits["max_total_bytes"],
+                "max_ratio": limits["max_ratio"],
+            }
+            match = find_first_nxpk_payload(
+                temporary_path,
+                nxpk_limits,
+                lambda payload: detect_format_bytes(payload[:DETECTION_READ_BYTES])["family"] == "image",
+            )
+            if match is None:
+                rejections.append(f"nested archive has no recognised image payload: {normalized}")
+                continue
+            payload = match["data"]
+            detection = detect_format_bytes(payload[:DETECTION_READ_BYTES])
+            return (
+                NestedCandidate(
+                    source_index=record.index,
+                    source_path=record.path,
+                    container_member=normalized,
+                    container_sha256=container_sha256,
+                    container_bytes=container_bytes,
+                    payload_index=int(match["index"]),
+                    payload_id=int(match["payload_id"]),
+                    payload_offset=int(match["offset"]),
+                    packed_bytes=int(match["packed_bytes"]),
+                    declared_unpacked_bytes=int(match["declared_unpacked_bytes"]),
+                    compression_flag=int(match["compression_flag"]),
+                    encrypted=bool(match["encrypted"]),
+                    payload=payload,
+                    detection=detection,
+                ),
+                rejections,
+            )
+        except (OSError, RuntimeError, ValueError, ExtractionError, MinimalRestoreError) as exc:
+            rejections.append(f"nested archive failed validation {normalized}: {exc}")
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink()
+    rejections.append("no valid image payload was found in nested NXPK archives")
+    return None, rejections
+
+
 def _path_is_within(path: Path, parent: Path) -> bool:
     try:
         path.resolve().relative_to(parent.resolve())
@@ -332,6 +482,7 @@ def _extract_candidate(
         )
     return {
         "kind": kind,
+        "nested": False,
         "source_index": candidate.source_index,
         "source_archive": str(candidate.source_path),
         "member": candidate.normalized_member,
@@ -341,6 +492,86 @@ def _extract_candidate(
         "zip_crc32": expected_crc_hex,
         "read_crc32": member_crc_hex,
         "source_member_sha256": member_sha256,
+        "restored_sha256": restored_sha256,
+        "hash_match": hash_match,
+        "bytes_match": bytes_match,
+        "source_detection": candidate.detection,
+        "restored_detection": restored_detection,
+        "format_match": format_match,
+        "status": "complete",
+    }
+
+
+def _extract_nested_candidate(
+    candidate: NestedCandidate,
+    output_dir: Path,
+) -> dict[str, Any]:
+    suffix = candidate.detection["format"]
+    if suffix == "iso-bmff":
+        suffix = "mp4"
+    target = (
+        output_dir
+        / "restored"
+        / "image"
+        / f"{candidate.source_index:02d}-{PurePosixPath(candidate.container_member).stem}"
+        f"-entry-{candidate.payload_index:07d}.{suffix}"
+    )
+    if not _path_is_within(target, output_dir):
+        raise MinimalRestoreError("restored nested output path escaped the run directory")
+    target.parent.mkdir(parents=True, exist_ok=False)
+    partial = target.with_name(target.name + ".partial")
+    payload_sha256 = hashlib.sha256(candidate.payload).hexdigest()
+    payload_crc32 = f"{zlib.crc32(candidate.payload) & 0xFFFFFFFF:08x}"
+    try:
+        with partial.open("xb") as output_stream:
+            output_stream.write(candidate.payload)
+            output_stream.flush()
+            os.fsync(output_stream.fileno())
+        partial.replace(target)
+    finally:
+        if partial.exists():
+            partial.unlink()
+
+    restored_sha256, restored_bytes = _sha256_file(target)
+    with target.open("rb") as restored_stream:
+        restored_detection = detect_format_bytes(restored_stream.read(DETECTION_READ_BYTES))
+    hash_match = payload_sha256 == restored_sha256
+    bytes_match = len(candidate.payload) == restored_bytes
+    format_match = (
+        candidate.detection["family"] == restored_detection["family"]
+        and candidate.detection["format"] == restored_detection["format"]
+    )
+    if not hash_match or not bytes_match or not format_match:
+        raise MinimalRestoreError(
+            "restored nested verification failed: "
+            f"hash_match={hash_match}, bytes_match={bytes_match}, format_match={format_match}"
+        )
+    member = (
+        f"{candidate.container_member}::entry/"
+        f"{candidate.payload_index:07d}_{candidate.payload_id:08x}.{suffix}"
+    )
+    return {
+        "kind": "image",
+        "nested": True,
+        "source_index": candidate.source_index,
+        "source_archive": str(candidate.source_path),
+        "member": member,
+        "container_member": candidate.container_member,
+        "container_sha256": candidate.container_sha256,
+        "container_bytes": candidate.container_bytes,
+        "nested_entry_index": candidate.payload_index,
+        "nested_payload_id": candidate.payload_id,
+        "nested_payload_offset": candidate.payload_offset,
+        "nested_packed_bytes": candidate.packed_bytes,
+        "nested_declared_unpacked_bytes": candidate.declared_unpacked_bytes,
+        "nested_compression_flag": candidate.compression_flag,
+        "nested_encrypted": candidate.encrypted,
+        "output": str(target),
+        "zip_member_bytes": len(candidate.payload),
+        "restored_bytes": restored_bytes,
+        "zip_crc32": None,
+        "read_crc32": payload_crc32,
+        "source_member_sha256": payload_sha256,
         "restored_sha256": restored_sha256,
         "hash_match": hash_match,
         "bytes_match": bytes_match,
@@ -601,7 +832,12 @@ def run_minimal_restore_test(
                 _record_failure(manifest, str(record.path), "source-preflight", row["error"])
 
         selected_video, video_failures = _select_candidate("video", video_candidates, video_member)
-        selected_image, image_failures = _select_candidate("image", image_candidates, image_member)
+        selected_direct_image, image_failures = _select_candidate("image", image_candidates, image_member)
+        selected_image: Candidate | NestedCandidate | None = selected_direct_image
+        if selected_image is None and image_member is None:
+            nested_image, nested_failures = _find_nested_nxpk_image(records, output, limits)
+            image_failures.extend(nested_failures)
+            selected_image = nested_image
         manifest["selection"]["candidate_rejections"]["video"] = video_failures
         manifest["selection"]["candidate_rejections"]["image"] = image_failures
         if selected_video is not None:
@@ -616,7 +852,7 @@ def run_minimal_restore_test(
             }
         else:
             _record_failure(manifest, "video", "selection", "; ".join(video_failures))
-        if selected_image is not None:
+        if isinstance(selected_image, Candidate):
             manifest["selection"]["image"] = {
                 "source_index": selected_image.source_index,
                 "source_archive": str(selected_image.source_path),
@@ -625,13 +861,37 @@ def run_minimal_restore_test(
                 "compressed_bytes": selected_image.info.compress_size,
                 "crc32": f"{selected_image.info.CRC & 0xFFFFFFFF:08x}",
                 "detection": selected_image.detection,
+                "nested": False,
+            }
+        elif isinstance(selected_image, NestedCandidate):
+            nested_member = (
+                f"{selected_image.container_member}::entry/"
+                f"{selected_image.payload_index:07d}_{selected_image.payload_id:08x}."
+                f"{selected_image.detection['format']}"
+            )
+            manifest["selection"]["image"] = {
+                "source_index": selected_image.source_index,
+                "source_archive": str(selected_image.source_path),
+                "member": nested_member,
+                "declared_bytes": len(selected_image.payload),
+                "compressed_bytes": selected_image.packed_bytes,
+                "crc32": None,
+                "detection": selected_image.detection,
+                "nested": True,
+                "container_member": selected_image.container_member,
+                "container_sha256": selected_image.container_sha256,
+                "nested_entry_index": selected_image.payload_index,
+                "nested_payload_id": selected_image.payload_id,
             }
         else:
             _record_failure(manifest, "image", "selection", "; ".join(image_failures))
 
         if selected_video is not None and selected_image is not None:
             selected_assets = [("video", selected_video), ("image", selected_image)]
-            total_selected_bytes = sum(candidate.info.file_size for _, candidate in selected_assets)
+            total_selected_bytes = sum(
+                candidate.info.file_size if isinstance(candidate, Candidate) else len(candidate.payload)
+                for _, candidate in selected_assets
+            )
             if total_selected_bytes > max_total_bytes:
                 _record_failure(
                     manifest,
@@ -642,10 +902,18 @@ def run_minimal_restore_test(
             else:
                 for kind, candidate in selected_assets:
                     try:
-                        asset = _extract_candidate(candidate, output, kind, limits)
+                        if isinstance(candidate, NestedCandidate):
+                            asset = _extract_nested_candidate(candidate, output)
+                        else:
+                            asset = _extract_candidate(candidate, output, kind, limits)
                         manifest["assets"].append(asset)
                     except (OSError, PermissionError, RuntimeError, ValueError, MinimalRestoreError) as exc:
-                        _record_failure(manifest, candidate.normalized_member, "restore", str(exc))
+                        member_name = (
+                            candidate.container_member
+                            if isinstance(candidate, NestedCandidate)
+                            else candidate.normalized_member
+                        )
+                        _record_failure(manifest, member_name, "restore", str(exc))
                         break
     finally:
         _verify_sources_after(records, source_rows, manifest)

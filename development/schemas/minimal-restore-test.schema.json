@@ -158,27 +158,33 @@
         "member": {"type": "string", "minLength": 1},
         "declared_bytes": {"type": "integer", "minimum": 0},
         "compressed_bytes": {"type": "integer", "minimum": 0},
-        "crc32": {"type": "string", "pattern": "^[0-9a-f]{8}$"},
-        "detection": {"$ref": "#/$defs/detection"}
+        "crc32": {"type": ["string", "null"], "pattern": "^[0-9a-f]{8}$"},
+        "detection": {"$ref": "#/$defs/detection"},
+        "nested": {"type": "boolean"},
+        "container_member": {"type": "string", "minLength": 1},
+        "container_sha256": {"$ref": "#/$defs/sha256"},
+        "nested_entry_index": {"type": "integer", "minimum": 0},
+        "nested_payload_id": {"type": "integer", "minimum": 0}
       }
     },
     "asset": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "kind", "source_index", "source_archive", "member", "output", "zip_member_bytes",
+        "kind", "nested", "source_index", "source_archive", "member", "output", "zip_member_bytes",
         "restored_bytes", "zip_crc32", "read_crc32", "source_member_sha256", "restored_sha256",
         "hash_match", "bytes_match", "source_detection", "restored_detection", "format_match", "status"
       ],
       "properties": {
         "kind": {"enum": ["video", "image"]},
+        "nested": {"type": "boolean"},
         "source_index": {"type": "integer", "minimum": 0},
         "source_archive": {"type": "string", "minLength": 1},
         "member": {"type": "string", "minLength": 1},
         "output": {"type": "string", "minLength": 1},
         "zip_member_bytes": {"type": "integer", "minimum": 0},
         "restored_bytes": {"type": "integer", "minimum": 0},
-        "zip_crc32": {"type": "string", "pattern": "^[0-9a-f]{8}$"},
+        "zip_crc32": {"type": ["string", "null"], "pattern": "^[0-9a-f]{8}$"},
         "read_crc32": {"type": "string", "pattern": "^[0-9a-f]{8}$"},
         "source_member_sha256": {"$ref": "#/$defs/sha256"},
         "restored_sha256": {"$ref": "#/$defs/sha256"},
@@ -187,7 +193,17 @@
         "source_detection": {"$ref": "#/$defs/detection"},
         "restored_detection": {"$ref": "#/$defs/detection"},
         "format_match": {"const": true},
-        "status": {"const": "complete"}
+        "status": {"const": "complete"},
+        "container_member": {"type": "string", "minLength": 1},
+        "container_sha256": {"$ref": "#/$defs/sha256"},
+        "container_bytes": {"type": "integer", "minimum": 0},
+        "nested_entry_index": {"type": "integer", "minimum": 0},
+        "nested_payload_id": {"type": "integer", "minimum": 0},
+        "nested_payload_offset": {"type": "integer", "minimum": 0},
+        "nested_packed_bytes": {"type": "integer", "minimum": 0},
+        "nested_declared_unpacked_bytes": {"type": "integer", "minimum": 0},
+        "nested_compression_flag": {"type": "integer", "minimum": 0},
+        "nested_encrypted": {"type": "boolean"}
       }
     },
     "sha256": {

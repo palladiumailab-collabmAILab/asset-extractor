@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import struct
 import sys
 import tempfile
 import unittest
@@ -39,6 +40,29 @@ class MinimalRestoreTests(unittest.TestCase):
             archive.writestr("res/ui/00-invalid.png", b"not-an-image")
             archive.writestr("res/ui/01-demo.png", PNG_FIXTURE)
         return source, MP4_FIXTURE, PNG_FIXTURE
+
+    def make_nxpk_bytes(self, payloads: list[bytes]) -> bytes:
+        index_offset = 24
+        data_offset = index_offset + 32 * len(payloads)
+        entries: list[bytes] = []
+        cursor = data_offset
+        for index, payload in enumerate(payloads):
+            entries.append(
+                struct.pack(
+                    "<8I",
+                    0x1000 + index,
+                    0,
+                    cursor,
+                    len(payload),
+                    len(payload),
+                    0,
+                    0,
+                    0,
+                )
+            )
+            cursor += len(payload)
+        header = b"NXPK" + struct.pack("<IIIII", len(payloads), 0, 0, 0, index_offset)
+        return header + b"".join(entries) + b"".join(payloads)
 
     def test_magic_detection_is_independent_of_extension(self) -> None:
         self.assertEqual(detect_format_bytes(MP4_FIXTURE)["family"], "video")
@@ -80,6 +104,27 @@ class MinimalRestoreTests(unittest.TestCase):
             run_minimal_restore_test([source], output)
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
         self.assertFalse((output / "minimal-restore-manifest.json").exists())
+
+    def test_image_can_be_restored_from_nested_nxpk_member(self) -> None:
+        source = self.root / "nested-image.obb"
+        nxpk = self.make_nxpk_bytes([b"not-an-image", PNG_FIXTURE])
+        with zipfile.ZipFile(source, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr("res/movie/demo.mp4", MP4_FIXTURE)
+            archive.writestr("tex11.npk", nxpk)
+        output = self.root / "nested-image-run"
+
+        manifest = run_minimal_restore_test([source], output)
+
+        self.assertEqual(manifest["status"], "complete")
+        assets = {asset["kind"]: asset for asset in manifest["assets"]}
+        self.assertFalse(assets["video"]["nested"])
+        self.assertTrue(assets["image"]["nested"])
+        self.assertEqual(assets["image"]["container_member"], "tex11.npk")
+        self.assertEqual(assets["image"]["nested_entry_index"], 1)
+        self.assertEqual(Path(assets["image"]["output"]).read_bytes(), PNG_FIXTURE)
+        self.assertTrue(assets["image"]["hash_match"])
+        self.assertTrue(assets["image"]["format_match"])
+        self.assertFalse(any(output.glob(".minimal-restore-nested-*.npk")))
 
 
 if __name__ == "__main__":
