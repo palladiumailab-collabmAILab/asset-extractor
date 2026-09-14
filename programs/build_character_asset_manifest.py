@@ -558,6 +558,215 @@ def _safe_count(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
+def _candidate_publication_status(model: dict[str, Any], selection_status: str) -> str:
+    if model["join_status"] != "joined":
+        return "blocked-technical-join"
+    if not model["output_verified"]:
+        return "blocked-output-verification"
+    if selection_status != "verified":
+        return "blocked-visual-evidence"
+    return "verified"
+
+
+def _build_candidate(
+    character: dict[str, Any],
+    model: dict[str, Any],
+    evidence_by_path: dict[tuple[str, str], dict[str, Any]],
+) -> dict[str, Any]:
+    """Create one model candidate and apply publication gates."""
+
+    evidence = evidence_by_path.get((character["character_id"], model["logical_path"]))
+    selection_status = evidence["status"] if evidence else "unmapped-candidate"
+    confidence = evidence["confidence"] if evidence else "unknown"
+    return {
+        "variant_id": evidence.get("variant_id") if evidence else None,
+        "selection_status": selection_status,
+        "publication_status": _candidate_publication_status(model, selection_status),
+        "confidence": confidence,
+        "visual_reference_ids": evidence.get("reference_ids", []) if evidence else [],
+        "visual_reference_sha256s": evidence.get("visual_reference_sha256s", []) if evidence else [],
+        "label_ja": evidence.get("label_ja") if evidence else None,
+        "evidence_ref": evidence.get("evidence_ref") if evidence else None,
+        "evidence_note": evidence.get("evidence_note") if evidence else None,
+        "logical_path": model["logical_path"],
+        "mesh_sha256": model["mesh_sha256"],
+        "model_status": model["model_status"],
+        "join_status": model["join_status"],
+        "output": model["output"],
+        "output_sha256": model["output_sha256"],
+        "output_bytes": model["output_bytes"],
+        "output_verified": model["output_verified"],
+        "material_source": model["material_source"],
+        "material_sha256": model["material_sha256"],
+        "material_resolution": model["material_resolution"],
+        "materials": model["materials"],
+        "association_evidence": model["association_evidence"],
+        "catalog_conflict": model["catalog_conflict"],
+        "catalog_manifests": model["catalog_manifests"],
+    }
+
+
+def _normalized_candidate_row(character: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    """Convert one candidate to the stable, tabular publication shape."""
+
+    return {
+        "rarity": character.get("rarity", ""),
+        "character_id": character["character_id"],
+        "name_ja": character["name_ja"],
+        "name_zh": character["name_zh"],
+        "reading": character["reading"],
+        "pinyin": character.get("pinyin", ""),
+        "asset_token": character["asset_token"],
+        "variant_id": candidate["variant_id"] or "",
+        "selection_status": candidate["selection_status"],
+        "publication_status": candidate["publication_status"],
+        "confidence": candidate["confidence"],
+        "logical_path": candidate["logical_path"],
+        "mesh_sha256": candidate["mesh_sha256"],
+        "model_status": candidate["model_status"],
+        "join_status": candidate["join_status"],
+        "model_output_sha256": candidate["output_sha256"] or "",
+        "model_output_verified": str(candidate["output_verified"]).lower(),
+        "material_count": len(candidate["materials"]),
+        "texture_output_sha256s": ";".join(
+            item["texture_output_sha256"] or "" for item in candidate["materials"]
+        ),
+        "visual_reference_ids": ";".join(candidate["visual_reference_ids"]),
+        "visual_reference_sha256s": ";".join(candidate["visual_reference_sha256s"]),
+        "evidence_ref": candidate["evidence_ref"] or "",
+    }
+
+
+def _candidate_unresolved(character: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any] | None:
+    if candidate["publication_status"] == "verified":
+        return None
+    if candidate["join_status"] != "joined":
+        reason = "catalog_join_not_complete"
+    elif not candidate["output_verified"]:
+        reason = "model_output_hash_not_verified"
+    else:
+        reason = "visual_reference_not_verified"
+    return {
+        "character_id": character["character_id"],
+        "logical_path": candidate["logical_path"],
+        "reason": reason,
+    }
+
+
+def _evidence_unresolved_for_character(
+    character: dict[str, Any],
+    evidence_document: dict[str, Any] | None,
+    evidence_meta: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return evidence-only unresolved rows for one character."""
+
+    if not evidence_document:
+        return [], []
+    evidence_unresolved: list[dict[str, Any]] = []
+    unresolved: list[dict[str, Any]] = []
+    fallback_character_id = evidence_meta.get("character_id") if evidence_meta else None
+    for item in evidence_document.get("unresolved", []):
+        if not isinstance(item, dict):
+            continue
+        evidence_character = normalized_text(item.get("character_id")) or fallback_character_id
+        if evidence_character != character["character_id"]:
+            continue
+        label_ja = normalized_text(item.get("label_ja"))
+        reason = normalized_text(item.get("reason"))
+        evidence_ref = normalized_text(item.get("evidence_ref"))
+        evidence_unresolved.append(
+            {"label_ja": label_ja, "reason": reason, "evidence_ref": evidence_ref}
+        )
+        unresolved.append(
+            {
+                "character_id": character["character_id"],
+                "logical_path": None,
+                "reason": "evidence_unresolved",
+                "detail": reason,
+            }
+        )
+    return evidence_unresolved, unresolved
+
+
+def _no_candidate_row(character: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "rarity": character.get("rarity", ""),
+        "character_id": character["character_id"],
+        "name_ja": character["name_ja"],
+        "name_zh": character["name_zh"],
+        "reading": character["reading"],
+        "pinyin": character.get("pinyin", ""),
+        "asset_token": character["asset_token"],
+        "variant_id": "",
+        "selection_status": "unresolved",
+        "publication_status": "blocked-no-candidate",
+        "confidence": "unknown",
+        "logical_path": "",
+        "mesh_sha256": "",
+        "model_status": "",
+        "join_status": "no_logical_path_candidate",
+        "model_output_sha256": "",
+        "model_output_verified": "false",
+        "material_count": 0,
+        "texture_output_sha256s": "",
+        "visual_reference_ids": "",
+        "visual_reference_sha256s": "",
+        "evidence_ref": "",
+    }
+
+
+def _join_character(
+    character: dict[str, Any],
+    model_rows: list[dict[str, Any]],
+    evidence_by_path: dict[tuple[str, str], dict[str, Any]],
+    evidence_document: dict[str, Any] | None,
+    evidence_meta: dict[str, Any] | None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Join one character to every matching model while retaining ambiguity."""
+
+    candidates: list[dict[str, Any]] = []
+    normalized_rows: list[dict[str, Any]] = []
+    unresolved: list[dict[str, Any]] = []
+    for model in model_rows:
+        if not token_matches(model["logical_path"], character["asset_token"]):
+            continue
+        candidate = _build_candidate(character, model, evidence_by_path)
+        candidates.append(candidate)
+        normalized_rows.append(_normalized_candidate_row(character, candidate))
+        unresolved_item = _candidate_unresolved(character, candidate)
+        if unresolved_item is not None:
+            unresolved.append(unresolved_item)
+
+    evidence_unresolved, evidence_failures = _evidence_unresolved_for_character(
+        character, evidence_document, evidence_meta
+    )
+    unresolved.extend(evidence_failures)
+    if not candidates:
+        unresolved.append(
+            {
+                "character_id": character["character_id"],
+                "logical_path": None,
+                "reason": "no_logical_path_candidate",
+            }
+        )
+        normalized_rows.append(_no_candidate_row(character))
+
+    joined = {
+        **character,
+        "model_candidates": sorted(
+            candidates, key=lambda item: (item["logical_path"], item["mesh_sha256"])
+        ),
+        "evidence_unresolved": evidence_unresolved,
+        "candidate_count": len(candidates),
+        "verified_count": sum(item["publication_status"] == "verified" for item in candidates),
+        "selection_policy": (
+            "publication requires a technically verified model+texture join and explicit "
+            "SHA-256-pinned image evidence for the exact logical path"
+        ),
+    }
+    return joined, normalized_rows, unresolved
+
+
 def _assemble_manifest(
     table_path: Path,
     catalog_paths: Iterable[Path],
@@ -583,166 +792,16 @@ def _assemble_manifest(
     normalized_rows: list[dict[str, Any]] = []
     unresolved: list[dict[str, Any]] = []
     for character in rows:
-        token = character["asset_token"]
-        candidates: list[dict[str, Any]] = []
-        for model in model_rows:
-            if not token_matches(model["logical_path"], token):
-                continue
-            evidence = evidence_by_path.get((character["character_id"], model["logical_path"]))
-            if evidence is None:
-                selection_status = "unmapped-candidate"
-                confidence = "unknown"
-            else:
-                selection_status = evidence["status"]
-                confidence = evidence["confidence"]
-            if model["join_status"] != "joined":
-                publication_status = "blocked-technical-join"
-            elif not model["output_verified"]:
-                publication_status = "blocked-output-verification"
-            elif selection_status != "verified":
-                publication_status = "blocked-visual-evidence"
-            else:
-                publication_status = "verified"
-            candidate = {
-                "variant_id": evidence.get("variant_id") if evidence else None,
-                "selection_status": selection_status,
-                "publication_status": publication_status,
-                "confidence": confidence,
-                "visual_reference_ids": evidence.get("reference_ids", []) if evidence else [],
-                "visual_reference_sha256s": (
-                    evidence.get("visual_reference_sha256s", []) if evidence else []
-                ),
-                "label_ja": evidence.get("label_ja") if evidence else None,
-                "evidence_ref": evidence.get("evidence_ref") if evidence else None,
-                "evidence_note": evidence.get("evidence_note") if evidence else None,
-                "logical_path": model["logical_path"],
-                "mesh_sha256": model["mesh_sha256"],
-                "model_status": model["model_status"],
-                "join_status": model["join_status"],
-                "output": model["output"],
-                "output_sha256": model["output_sha256"],
-                "output_bytes": model["output_bytes"],
-                "output_verified": model["output_verified"],
-                "material_source": model["material_source"],
-                "material_sha256": model["material_sha256"],
-                "material_resolution": model["material_resolution"],
-                "materials": model["materials"],
-                "association_evidence": model["association_evidence"],
-                "catalog_conflict": model["catalog_conflict"],
-                "catalog_manifests": model["catalog_manifests"],
-            }
-            candidates.append(candidate)
-            normalized_rows.append(
-                {
-                    "rarity": character.get("rarity", ""),
-                    "character_id": character["character_id"],
-                    "name_ja": character["name_ja"],
-                    "name_zh": character["name_zh"],
-                    "reading": character["reading"],
-                    "pinyin": character.get("pinyin", ""),
-                    "asset_token": token,
-                    "variant_id": candidate["variant_id"] or "",
-                    "selection_status": selection_status,
-                    "publication_status": publication_status,
-                    "confidence": confidence,
-                    "logical_path": model["logical_path"],
-                    "mesh_sha256": model["mesh_sha256"],
-                    "model_status": model["model_status"],
-                    "join_status": model["join_status"],
-                    "model_output_sha256": model["output_sha256"] or "",
-                    "model_output_verified": str(model["output_verified"]).lower(),
-                    "material_count": len(model["materials"]),
-                    "texture_output_sha256s": ";".join(
-                        item["texture_output_sha256"] or "" for item in model["materials"]
-                    ),
-                    "visual_reference_ids": ";".join(candidate["visual_reference_ids"]),
-                    "visual_reference_sha256s": ";".join(
-                        candidate["visual_reference_sha256s"]
-                    ),
-                    "evidence_ref": candidate["evidence_ref"] or "",
-                }
-            )
-            if publication_status != "verified":
-                unresolved.append(
-                    {
-                        "character_id": character["character_id"],
-                        "logical_path": model["logical_path"],
-                        "reason": (
-                            "catalog_join_not_complete" if model["join_status"] != "joined" else
-                            "model_output_hash_not_verified" if not model["output_verified"] else
-                            "visual_reference_not_verified"
-                        ),
-                    }
-                )
-        evidence_unresolved = []
-        if evidence_document:
-            for item in evidence_document.get("unresolved", []):
-                if not isinstance(item, dict):
-                    continue
-                evidence_character = normalized_text(item.get("character_id")) or evidence_meta.get("character_id")
-                if evidence_character == character["character_id"]:
-                    evidence_unresolved.append(
-                        {
-                            "label_ja": normalized_text(item.get("label_ja")),
-                            "reason": normalized_text(item.get("reason")),
-                            "evidence_ref": normalized_text(item.get("evidence_ref")),
-                        }
-                    )
-                    unresolved.append(
-                        {
-                            "character_id": character["character_id"],
-                            "logical_path": None,
-                            "reason": "evidence_unresolved",
-                            "detail": normalized_text(item.get("reason")),
-                        }
-                    )
-        if not candidates:
-            unresolved.append(
-                {
-                    "character_id": character["character_id"],
-                    "logical_path": None,
-                    "reason": "no_logical_path_candidate",
-                }
-            )
-            normalized_rows.append(
-                {
-                    "rarity": character.get("rarity", ""),
-                    "character_id": character["character_id"],
-                    "name_ja": character["name_ja"],
-                    "name_zh": character["name_zh"],
-                    "reading": character["reading"],
-                    "pinyin": character.get("pinyin", ""),
-                    "asset_token": token,
-                    "variant_id": "",
-                    "selection_status": "unresolved",
-                    "publication_status": "blocked-no-candidate",
-                    "confidence": "unknown",
-                    "logical_path": "",
-                    "mesh_sha256": "",
-                    "model_status": "",
-                    "join_status": "no_logical_path_candidate",
-                    "model_output_sha256": "",
-                    "model_output_verified": "false",
-                    "material_count": 0,
-                    "texture_output_sha256s": "",
-                    "visual_reference_ids": "",
-                    "visual_reference_sha256s": "",
-                    "evidence_ref": "",
-                }
-            )
-        characters.append(
-            {
-                **character,
-                "model_candidates": sorted(candidates, key=lambda item: (item["logical_path"], item["mesh_sha256"])),
-                "evidence_unresolved": evidence_unresolved,
-                "candidate_count": len(candidates),
-                "verified_count": sum(item["publication_status"] == "verified" for item in candidates),
-                "selection_policy": (
-                    "publication requires a technically verified model+texture join and explicit "
-                    "SHA-256-pinned image evidence for the exact logical path"
-                ),
-            }
+        joined, rows_for_character, failures_for_character = _join_character(
+            character,
+            model_rows,
+            evidence_by_path,
+            evidence_document,
+            evidence_meta,
         )
+        characters.append(joined)
+        normalized_rows.extend(rows_for_character)
+        unresolved.extend(failures_for_character)
 
     counts = {
         "characters": len(characters),
