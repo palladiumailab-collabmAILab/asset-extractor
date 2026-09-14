@@ -335,6 +335,151 @@ def _write_failure_report(report_path: Path | None, manifest: dict[str, Any]) ->
         atomic_write_json(report_path, manifest)
 
 
+def _normalize_limits(limits: dict[str, int | float] | None) -> dict[str, int | float]:
+    """Normalize user limits once, before any filesystem work begins."""
+
+    if limits and set(limits) - set(DEFAULT_LIMITS):
+        unknown = ", ".join(sorted(set(limits) - set(DEFAULT_LIMITS)))
+        raise ExtractionError(f"unsupported limit name(s): {unknown}")
+    try:
+        normalized: dict[str, int | float] = {
+            "max_entries": int(
+                limits.get("max_entries", DEFAULT_LIMITS["max_entries"])
+                if limits
+                else DEFAULT_LIMITS["max_entries"]
+            ),
+            "max_member_bytes": int(
+                limits.get("max_member_bytes", DEFAULT_LIMITS["max_member_bytes"])
+                if limits
+                else DEFAULT_LIMITS["max_member_bytes"]
+            ),
+            "max_total_bytes": int(
+                limits.get("max_total_bytes", DEFAULT_LIMITS["max_total_bytes"])
+                if limits
+                else DEFAULT_LIMITS["max_total_bytes"]
+            ),
+            "max_ratio": float(
+                limits.get("max_ratio", DEFAULT_LIMITS["max_ratio"])
+                if limits
+                else DEFAULT_LIMITS["max_ratio"]
+            ),
+        }
+    except (TypeError, ValueError) as exc:
+        raise ExtractionError(f"invalid extraction limit: {exc}") from exc
+    for name in ("max_entries", "max_member_bytes", "max_total_bytes"):
+        if int(normalized[name]) <= 0:
+            raise ExtractionError(f"{name} must be positive")
+    if float(normalized["max_ratio"]) <= 0:
+        raise ExtractionError("max_ratio must be positive")
+    return normalized
+
+
+def _validate_profile(profile: str) -> None:
+    if profile not in {"auto", "zip", "nxpk"}:
+        raise ExtractionError(f"unsupported profile: {profile}")
+
+
+def _extract_to_staging(
+    *,
+    raw_inputs: list[str],
+    valid: list[tuple[Path, dict[str, Any]]],
+    input_rows: list[dict[str, Any]],
+    failures: list[dict[str, str]],
+    destination: Path,
+    profile: str,
+    strict: bool,
+    resume: bool,
+    limits: dict[str, int | float],
+) -> dict[str, Any]:
+    """Extract validated inputs and atomically publish one complete run."""
+
+    parent = destination.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{destination.name}.partial-", dir=parent))
+    extracted_root = temporary / "extracted"
+    extracted_root.mkdir(parents=True, exist_ok=True)
+    output_rows: list[dict[str, Any]] = []
+    processed = 0
+    manifest: dict[str, Any]
+    try:
+        for index, (source, input_row) in enumerate(valid, start=1):
+            source_root = _safe_stem(source, index)
+            target = extracted_root / source_root
+            try:
+                kind = input_row["kind"]
+                if profile == "zip" and kind not in {"zip", "apk-zip", "obb-zip"}:
+                    raise ExtractionError(f"profile=zip cannot process {source.name}")
+                if profile == "nxpk" and kind != "nxpk":
+                    raise ExtractionError(f"profile=nxpk cannot process {source.name}")
+                if kind in {"zip", "apk-zip", "obb-zip"}:
+                    extracted_entries = _extract_zip(source, target, limits)
+                elif kind == "nxpk":
+                    extracted_entries = extract_nxpk(source, target, limits)["entries"]
+                else:
+                    raise ExtractionError(f"unsupported input format: {source}")
+                source_sha256 = input_row["source_sha256_before"]
+                if not isinstance(source_sha256, str):
+                    raise ExtractionError(f"source SHA-256 is unavailable for {source.name}")
+                output_rows.extend(
+                    _manifest_entry(source, source_root, index - 1, source_sha256, entry)
+                    for entry in extracted_entries
+                )
+                input_row["status"] = "ok"
+                processed += 1
+            except (OSError, ExtractionError, zipfile.BadZipFile) as exc:
+                input_row["status"] = "error"
+                input_row["error"] = str(exc)
+                failures.append(_failure(str(source), str(exc), "extract"))
+                shutil.rmtree(target, ignore_errors=True)
+                if strict:
+                    raise ExtractionError(f"strict extraction failed for {source.name}: {exc}") from exc
+
+        failures.extend(_audit_inputs(input_rows))
+        if any(row["source_unchanged"] is False for row in input_rows):
+            raise ExtractionError("source hash changed during extraction")
+        if not processed:
+            raise ExtractionError("no input was extracted successfully")
+        output_files = file_rows(extracted_root)
+        # Repeat the audit after output hashing so the final provenance check is
+        # immediately before manifest creation and the atomic run commit.
+        failures.extend(_audit_inputs(input_rows))
+        if any(row["source_unchanged"] is False for row in input_rows):
+            raise ExtractionError("source hash changed during finalization")
+        status = "complete" if not failures else "partial"
+        normalized = _normalized_config(profile, strict, limits)
+        key = _resume_key(input_rows, normalized)
+        manifest = _build_manifest(
+            status=status,
+            profile=profile,
+            strict=strict,
+            resume=resume,
+            limits=limits,
+            input_rows=input_rows,
+            output_directory=destination / "extracted",
+            output_files=output_files,
+            entries=output_rows,
+            failures=failures,
+            committed=True,
+            resume_key=key,
+        )
+        manifest_errors = validate_manifest(manifest)
+        if manifest_errors:
+            raise ExtractionError(f"generated manifest is invalid: {'; '.join(manifest_errors)}")
+        atomic_write_json(temporary / "run-manifest.json", manifest)
+        if destination.exists():
+            raise ExtractionError("output appeared before atomic run commit")
+        os.replace(temporary, destination)
+        temporary = Path()
+    except (OSError, ExtractionError, zipfile.BadZipFile) as exc:
+        failures.extend(_audit_inputs(input_rows))
+        failures.append(_failure(str(exc), str(exc), "run"))
+        return _failed_manifest(raw_inputs, destination, limits, failures, input_rows, profile, strict, resume)
+    finally:
+        if str(temporary) and temporary != Path() and temporary.exists():
+            shutil.rmtree(temporary, ignore_errors=True)
+    return manifest
+
+
 def _resume_existing(
     destination: Path,
     input_rows: list[dict[str, Any]],
@@ -403,25 +548,8 @@ def extract_inputs(
     resume: bool = False,
     report: str | Path | None = None,
 ) -> dict[str, Any]:
-    if limits and set(limits) - set(DEFAULT_LIMITS):
-        unknown = ", ".join(sorted(set(limits) - set(DEFAULT_LIMITS)))
-        raise ExtractionError(f"unsupported limit name(s): {unknown}")
-    try:
-        effective_limits: dict[str, int | float] = {
-            "max_entries": int(limits.get("max_entries", DEFAULT_LIMITS["max_entries"]) if limits else DEFAULT_LIMITS["max_entries"]),
-            "max_member_bytes": int(limits.get("max_member_bytes", DEFAULT_LIMITS["max_member_bytes"]) if limits else DEFAULT_LIMITS["max_member_bytes"]),
-            "max_total_bytes": int(limits.get("max_total_bytes", DEFAULT_LIMITS["max_total_bytes"]) if limits else DEFAULT_LIMITS["max_total_bytes"]),
-            "max_ratio": float(limits.get("max_ratio", DEFAULT_LIMITS["max_ratio"]) if limits else DEFAULT_LIMITS["max_ratio"]),
-        }
-    except (TypeError, ValueError) as exc:
-        raise ExtractionError(f"invalid extraction limit: {exc}") from exc
-    if profile not in {"auto", "zip", "nxpk"}:
-        raise ExtractionError(f"unsupported profile: {profile}")
-    for name in ("max_entries", "max_member_bytes", "max_total_bytes"):
-        if int(effective_limits[name]) <= 0:
-            raise ExtractionError(f"{name} must be positive")
-    if float(effective_limits["max_ratio"]) <= 0:
-        raise ExtractionError("max_ratio must be positive")
+    effective_limits = _normalize_limits(limits)
+    _validate_profile(profile)
 
     destination = resolve_output_path(output)
     valid, input_rows, failures = _prepare_inputs(raw_inputs)
@@ -451,92 +579,16 @@ def extract_inputs(
         _write_failure_report(report_path, result)
         return result
 
-    parent = destination.parent
-    parent.mkdir(parents=True, exist_ok=True)
-    temporary = Path(tempfile.mkdtemp(prefix=f".{destination.name}.partial-", dir=parent))
-    extracted_root = temporary / "extracted"
-    extracted_root.mkdir(parents=True, exist_ok=True)
-    output_rows: list[dict[str, Any]] = []
-    processed = 0
-    manifest: dict[str, Any]
-    try:
-        for index, (source, input_row) in enumerate(valid, start=1):
-            source_root = _safe_stem(source, index)
-            target = extracted_root / source_root
-            try:
-                kind = input_row["kind"]
-                if profile == "zip" and kind not in {"zip", "apk-zip", "obb-zip"}:
-                    raise ExtractionError(f"profile=zip cannot process {source.name}")
-                if profile == "nxpk" and kind != "nxpk":
-                    raise ExtractionError(f"profile=nxpk cannot process {source.name}")
-                if kind in {"zip", "apk-zip", "obb-zip"}:
-                    extracted_entries = _extract_zip(source, target, effective_limits)
-                elif kind == "nxpk":
-                    extracted_entries = extract_nxpk(source, target, effective_limits)["entries"]
-                else:
-                    raise ExtractionError(f"unsupported input format: {source}")
-                source_sha256 = input_row["source_sha256_before"]
-                if not isinstance(source_sha256, str):
-                    raise ExtractionError(f"source SHA-256 is unavailable for {source.name}")
-                output_rows.extend(
-                    _manifest_entry(source, source_root, index - 1, source_sha256, entry)
-                    for entry in extracted_entries
-                )
-                input_row["status"] = "ok"
-                processed += 1
-            except (OSError, ExtractionError, zipfile.BadZipFile) as exc:
-                input_row["status"] = "error"
-                input_row["error"] = str(exc)
-                failures.append(_failure(str(source), str(exc), "extract"))
-                shutil.rmtree(target, ignore_errors=True)
-                if strict:
-                    raise ExtractionError(f"strict extraction failed for {source.name}: {exc}") from exc
-
-        failures.extend(_audit_inputs(input_rows))
-        if any(row["source_unchanged"] is False for row in input_rows):
-            raise ExtractionError("source hash changed during extraction")
-        if not processed:
-            raise ExtractionError("no input was extracted successfully")
-        output_files = file_rows(extracted_root)
-        # Repeat the audit after output hashing so the final provenance check is
-        # immediately before manifest creation and the atomic run commit.
-        failures.extend(_audit_inputs(input_rows))
-        if any(row["source_unchanged"] is False for row in input_rows):
-            raise ExtractionError("source hash changed during finalization")
-        status = "complete" if not failures else "partial"
-        normalized = _normalized_config(profile, strict, effective_limits)
-        key = _resume_key(input_rows, normalized)
-        manifest = _build_manifest(
-            status=status,
-            profile=profile,
-            strict=strict,
-            resume=resume,
-            limits=effective_limits,
-            input_rows=input_rows,
-            output_directory=destination / "extracted",
-            output_files=output_files,
-            entries=output_rows,
-            failures=failures,
-            committed=True,
-            resume_key=key,
-        )
-        manifest_errors = validate_manifest(manifest)
-        if manifest_errors:
-            raise ExtractionError(f"generated manifest is invalid: {'; '.join(manifest_errors)}")
-        atomic_write_json(temporary / "run-manifest.json", manifest)
-        if destination.exists():
-            raise ExtractionError("output appeared before atomic run commit")
-        os.replace(temporary, destination)
-        temporary = Path()
-    except (OSError, ExtractionError, zipfile.BadZipFile) as exc:
-        failures.extend(_audit_inputs(input_rows))
-        failures.append(_failure(str(exc), str(exc), "run"))
-        result = _failed_manifest(raw_inputs, destination, effective_limits, failures, input_rows, profile, strict, resume)
-        _write_failure_report(report_path, result)
-        return result
-    finally:
-        if str(temporary) and temporary != Path() and temporary.exists():
-            shutil.rmtree(temporary, ignore_errors=True)
-
+    manifest = _extract_to_staging(
+        raw_inputs=raw_inputs,
+        valid=valid,
+        input_rows=input_rows,
+        failures=failures,
+        destination=destination,
+        profile=profile,
+        strict=strict,
+        resume=resume,
+        limits=effective_limits,
+    )
     _write_failure_report(report_path, manifest)
     return manifest
