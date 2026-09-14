@@ -129,6 +129,55 @@ class PrepareTexturedRuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.PublicationError, "slot_indices"):
                 MODULE.load_material_overrides(path)
 
+    def test_material_selection_keeps_override_slot_order_explicit(self) -> None:
+        mesh_sha = "a" * 64
+        material_sha = "b" * 64
+        document = {
+            "source": "material.bin",
+            "source_sha256": material_sha,
+            "declared_material_count": 2,
+            "group_name": "s3_hairen",
+            "slots": [
+                {"ordinal": 0, "name": "body", "tex0_values": ["body"]},
+                {"ordinal": 1, "name": "face", "tex0_values": ["face"]},
+            ],
+        }
+        selection = MODULE._resolve_material_selection(
+            mesh_sha,
+            {mesh_sha: {material_sha: document}},
+            {
+                mesh_sha: {
+                    "material_source_sha256": material_sha,
+                    "slot_indices": [1, 0],
+                    "reason": "audited fixture",
+                }
+            },
+            False,
+        )
+        self.assertEqual([slot["name"] for slot in selection["slots"]], ["face", "body"])
+        self.assertEqual(selection["slots"][0]["ordinal"], 0)
+        self.assertEqual(selection["override_record"]["expanded_slot_count"], 2)
+
+    def test_material_selection_coalesces_only_equivalent_duplicates(self) -> None:
+        mesh_sha = "a" * 64
+        slot = {"ordinal": 0, "name": "body", "tex0_values": ["body"]}
+        first = {
+            "source": "material-a.bin",
+            "source_sha256": "a" * 64,
+            "declared_material_count": 1,
+            "group_name": "s3_hairen",
+            "slots": [slot],
+        }
+        second = {**first, "source": "material-b.bin", "source_sha256": "b" * 64}
+        selection = MODULE._resolve_material_selection(
+            mesh_sha,
+            {mesh_sha: {first["source_sha256"]: first, second["source_sha256"]: second}},
+            {},
+            True,
+        )
+        self.assertIs(selection["material"], first)
+        self.assertEqual(selection["material_resolution"]["policy"], "equivalent_binding_signature")
+
 
 if __name__ == "__main__":
     unittest.main()

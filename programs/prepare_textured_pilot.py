@@ -562,6 +562,236 @@ def resolve_texture_output(
     return {**texture_outputs[png_sha], "png_bytes": png}
 
 
+def _resolve_material_selection(
+    mesh_sha: str,
+    material_by_mesh: dict[str, dict[str, dict[str, Any]]],
+    material_overrides: dict[str, dict[str, Any]],
+    allow_equivalent_material_duplicates: bool,
+) -> dict[str, Any]:
+    """Choose one material document and retain every ambiguity as data."""
+
+    override = material_overrides.get(mesh_sha.lower())
+    documents = list(material_by_mesh.get(mesh_sha, {}).values())
+    if override is not None:
+        selected_documents = [
+            document
+            for document in documents
+            if str(document.get("source_sha256", "")).lower() == override["material_source_sha256"]
+        ]
+        if len(selected_documents) != 1:
+            return {
+                "material": None,
+                "slots": [],
+                "original_slots": [],
+                "override": override,
+                "material_resolution": None,
+                "reasons": ["material_override_source_not_unique"],
+                "material_candidates": [record["source"] for record in documents],
+            }
+        documents = selected_documents
+
+    material_resolution: dict[str, Any] | None = None
+    if len(documents) != 1 and allow_equivalent_material_duplicates and documents:
+        signatures = {material_binding_signature(document) for document in documents}
+        if len(signatures) == 1:
+            chosen = min(
+                documents,
+                key=lambda document: (
+                    str(document.get("source_sha256", "")),
+                    str(document.get("source", "")),
+                ),
+            )
+            material_resolution = {
+                "policy": "equivalent_binding_signature",
+                "candidate_count": len(documents),
+                "candidate_sources": [document["source"] for document in documents],
+                "chosen_source": chosen["source"],
+            }
+            documents = [chosen]
+    if len(documents) != 1:
+        return {
+            "material": None,
+            "slots": [],
+            "original_slots": [],
+            "override": override,
+            "material_resolution": material_resolution,
+            "reasons": [
+                "no_unique_material_document" if not documents else "multiple_material_documents"
+            ],
+            "material_candidates": [record["source"] for record in documents],
+        }
+
+    material = documents[0]
+    original_slots = material["slots"]
+    slots = original_slots
+    override_record = None
+    reasons: list[str] = []
+    if override is not None:
+        if any(index >= len(original_slots) for index in override["slot_indices"]):
+            reasons.append("material_override_slot_index_out_of_range")
+        else:
+            slots = [copy.deepcopy(original_slots[index]) for index in override["slot_indices"]]
+            for ordinal, slot in enumerate(slots):
+                slot["ordinal"] = ordinal
+            override_record = {
+                **override,
+                "original_slot_count": len(original_slots),
+                "expanded_slot_count": len(slots),
+            }
+    return {
+        "material": material,
+        "slots": slots,
+        "original_slots": original_slots,
+        "override": override,
+        "override_record": override_record,
+        "material_resolution": material_resolution,
+        "reasons": reasons,
+        "material_candidates": [],
+    }
+
+
+def _convert_mesh_document(
+    *,
+    source: Path,
+    material: dict[str, Any],
+    slots: list[dict[str, Any]],
+    override_record: dict[str, Any] | None,
+    material_resolution: dict[str, Any] | None,
+    by_hash: dict[str, list[dict[str, Any]]],
+    output: Path,
+    texture_outputs: dict[str, dict[str, Any]],
+    mesh_loader: Any,
+    bones: Any,
+    mesh_hash: Any,
+    convert_image: Any,
+    gltf: Any,
+) -> dict[str, Any]:
+    """Convert one resolved mesh/material pair into validated glTF data."""
+
+    original_slots = material["slots"]
+    if material["declared_material_count"] != len(slots):
+        if override_record is None or material["declared_material_count"] != len(original_slots):
+            raise PublicationError("declared MaterialCount differs from Material_N records")
+    if any(len(slot.get("tex0_values", [])) != 1 for slot in slots):
+        raise PublicationError("every Material_N must contain exactly one Tex0")
+
+    mesh, parts = capture_mesh_parts(mesh_loader, source)
+    if len(parts) != len(slots):
+        raise PublicationError("ordered submesh count differs from ordered Material_N count")
+    uv_policy = None
+    uv_input_count = len(mesh.mesh.uv)
+    vertex_count = int(mesh.vertex_count)
+    if uv_input_count != vertex_count:
+        if uv_input_count < vertex_count or uv_input_count % vertex_count:
+            raise PublicationError("mesh has an incomplete UV block")
+        mesh.mesh.uv = mesh.mesh.uv[:vertex_count]
+        uv_policy = {
+            "policy": "first_vertex_sized_block_as_texcoord_0",
+            "input_uv_count": uv_input_count,
+            "output_uv_count": vertex_count,
+            "input_blocks": uv_input_count // vertex_count,
+        }
+
+    resolved_textures = [
+        resolve_texture_output(
+            slot["tex0_values"][0],
+            by_hash,
+            mesh_hash,
+            convert_image,
+            output,
+            texture_outputs,
+        )
+        for slot in slots
+    ]
+    mesh.bones = bones()
+    document = json.loads(gltf.convert(mesh).decode("utf-8"))
+    association = (
+        "explicit audited submesh slot map; source Material_N slots selected by SHA-256; "
+        "repeated slots are intentional and recorded in material_override"
+        if override_record is not None
+        else "ordered NeoX submesh to ordered Material_N; exact counts required"
+    )
+    document = split_primitives_and_attach_materials(
+        document, parts, slots, resolved_textures, association
+    )
+    if override_record is not None:
+        document.setdefault("extras", {})["material_override"] = override_record
+    validation = validate_gltf(document, parts)
+    association_evidence = (
+        "explicit audited submesh slot map; source material selected by SHA-256; "
+        "ordered mapped slots equal observed submeshes; every Tex0 resolves to one texture payload"
+        if override_record is not None
+        else (
+            "equivalent duplicate material documents; binding signatures identical; deterministic source selected; "
+            "ordered submesh and Material_N counts equal; every Tex0 resolves to one texture payload"
+            if material_resolution is not None
+            else "one material document; one mesh payload; ordered submesh and Material_N counts equal; every Tex0 resolves to one texture payload"
+        )
+    )
+    return {
+        "mesh": mesh,
+        "parts": parts,
+        "slots": slots,
+        "resolved_textures": resolved_textures,
+        "document": document,
+        "validation": validation,
+        "uv_policy": uv_policy,
+        "association_evidence": association_evidence,
+    }
+
+
+def _mesh_success_fields(
+    *,
+    target: Path,
+    payload: bytes,
+    converted: dict[str, Any],
+) -> dict[str, Any]:
+    """Create the auditable success fields for one converted mesh."""
+
+    mesh = converted["mesh"]
+    parts = converted["parts"]
+    slots = converted["slots"]
+    resolved_textures = converted["resolved_textures"]
+    fields: dict[str, Any] = {
+        "status": "converted",
+        "output": str(target),
+        "output_sha256": sha256_bytes(payload),
+        "output_bytes": len(payload),
+        "vertex_count": int(mesh.vertex_count),
+        "face_count": int(mesh.face_count),
+        "uv_count": len(mesh.mesh.uv),
+        "submeshes": [
+            {
+                "ordinal": index,
+                "vertices": part[0],
+                "faces": part[1],
+                "uv_layers": part[2],
+                "unknown": part[3],
+            }
+            for index, part in enumerate(parts)
+        ],
+        "materials": [
+            {
+                "ordinal": slot["ordinal"],
+                "name": slot["name"],
+                "tex0": slot["tex0_values"][0],
+                "texture_source_sha256": texture["source_sha256"],
+                "texture_output_sha256": texture["output_sha256"],
+                "technique": slot.get("technique"),
+            }
+            for slot, texture in zip(slots, resolved_textures)
+        ],
+        "validation": converted["validation"],
+        "static_only": True,
+        "skeleton_omitted": True,
+        "animation_omitted": True,
+        "association_evidence": converted["association_evidence"],
+    }
+    if converted["uv_policy"] is not None:
+        fields["uv_policy"] = converted["uv_policy"]
+    return fields
+
+
 def publish_mesh(
     *,
     mesh_sha: str,
@@ -588,166 +818,53 @@ def publish_mesh(
         "status": "unresolved",
         "reasons": [],
     }
-    override = material_overrides.get(mesh_sha.lower())
-    documents = list(material_by_mesh.get(mesh_sha, {}).values())
-    if override is not None:
-        selected_documents = [
-            document
-            for document in documents
-            if str(document.get("source_sha256", "")).lower() == override["material_source_sha256"]
-        ]
-        if len(selected_documents) != 1:
-            item["reasons"].append("material_override_source_not_unique")
-            item["material_candidates"] = [record["source"] for record in documents]
-            item["material_override"] = override
-            return item, True
-        documents = selected_documents
-
-    material_resolution: dict[str, Any] | None = None
-    if len(documents) != 1 and allow_equivalent_material_duplicates and documents:
-        signatures = {material_binding_signature(document) for document in documents}
-        if len(signatures) == 1:
-            chosen = min(
-                documents,
-                key=lambda document: (
-                    str(document.get("source_sha256", "")),
-                    str(document.get("source", "")),
-                ),
-            )
-            material_resolution = {
-                "policy": "equivalent_binding_signature",
-                "candidate_count": len(documents),
-                "candidate_sources": [document["source"] for document in documents],
-                "chosen_source": chosen["source"],
-            }
-            documents = [chosen]
-    if len(documents) != 1:
-        item["reasons"].append(
-            "no_unique_material_document" if not documents else "multiple_material_documents"
-        )
-        item["material_candidates"] = [record["source"] for record in documents]
+    selection = _resolve_material_selection(
+        mesh_sha,
+        material_by_mesh,
+        material_overrides,
+        allow_equivalent_material_duplicates,
+    )
+    if selection["material"] is None:
+        item["reasons"].extend(selection["reasons"])
+        item["material_candidates"] = selection["material_candidates"]
+        if selection["override"] is not None:
+            item["material_override"] = selection["override"]
         return item, True
 
-    material = documents[0]
-    original_slots = material["slots"]
-    slots = original_slots
+    material = selection["material"]
+    slots = selection["slots"]
     item["material_source"] = material["source"]
     item["material_sha256"] = material["source_sha256"]
     item["mesh_logical_paths"] = material["matched_meshes"][0]["logical_paths"]
-    if material_resolution is not None:
-        item["material_resolution"] = material_resolution
-    if override is not None:
-        if any(index >= len(original_slots) for index in override["slot_indices"]):
-            item["reasons"].append("material_override_slot_index_out_of_range")
-            item["material_override"] = override
+    if selection["material_resolution"] is not None:
+        item["material_resolution"] = selection["material_resolution"]
+    if selection["override"] is not None:
+        if selection["override_record"] is None:
+            item["reasons"].extend(selection["reasons"])
+            item["material_override"] = selection["override"]
             return item, True
-        slots = [copy.deepcopy(original_slots[index]) for index in override["slot_indices"]]
-        for ordinal, slot in enumerate(slots):
-            slot["ordinal"] = ordinal
-        item["material_override"] = {
-            **override,
-            "original_slot_count": len(original_slots),
-            "expanded_slot_count": len(slots),
-        }
+        item["material_override"] = selection["override_record"]
 
     try:
-        if material["declared_material_count"] != len(slots):
-            if override is None or material["declared_material_count"] != len(original_slots):
-                raise PublicationError("declared MaterialCount differs from Material_N records")
-        if any(len(slot.get("tex0_values", [])) != 1 for slot in slots):
-            raise PublicationError("every Material_N must contain exactly one Tex0")
-        mesh, parts = capture_mesh_parts(mesh_loader, source)
-        if len(parts) != len(slots):
-            raise PublicationError("ordered submesh count differs from ordered Material_N count")
-        uv_input_count = len(mesh.mesh.uv)
-        vertex_count = int(mesh.vertex_count)
-        if uv_input_count != vertex_count:
-            if uv_input_count < vertex_count or uv_input_count % vertex_count:
-                raise PublicationError("mesh has an incomplete UV block")
-            mesh.mesh.uv = mesh.mesh.uv[:vertex_count]
-            item["uv_policy"] = {
-                "policy": "first_vertex_sized_block_as_texcoord_0",
-                "input_uv_count": uv_input_count,
-                "output_uv_count": vertex_count,
-                "input_blocks": uv_input_count // vertex_count,
-            }
-
-        resolved_textures = [
-            resolve_texture_output(
-                slot["tex0_values"][0],
-                by_hash,
-                mesh_hash,
-                convert_image,
-                output,
-                texture_outputs,
-            )
-            for slot in slots
-        ]
-        mesh.bones = bones()
-        document = json.loads(gltf.convert(mesh).decode("utf-8"))
-        association = (
-            "explicit audited submesh slot map; source Material_N slots selected by SHA-256; "
-            "repeated slots are intentional and recorded in material_override"
-            if override is not None
-            else "ordered NeoX submesh to ordered Material_N; exact counts required"
+        converted = _convert_mesh_document(
+            source=source,
+            material=material,
+            slots=slots,
+            override_record=item.get("material_override"),
+            material_resolution=selection["material_resolution"],
+            by_hash=by_hash,
+            output=output,
+            texture_outputs=texture_outputs,
+            mesh_loader=mesh_loader,
+            bones=bones,
+            mesh_hash=mesh_hash,
+            convert_image=convert_image,
+            gltf=gltf,
         )
-        document = split_primitives_and_attach_materials(
-            document, parts, slots, resolved_textures, association
-        )
-        if override is not None:
-            document.setdefault("extras", {})["material_override"] = item["material_override"]
-        validation = validate_gltf(document, parts)
         target = output / "models" / mesh_sha[:2] / f"{mesh_sha}.gltf"
-        payload = json_bytes(document)
+        payload = json_bytes(converted["document"])
         write_atomic(target, payload)
-        association_evidence = (
-            "explicit audited submesh slot map; source material selected by SHA-256; "
-            "ordered mapped slots equal observed submeshes; every Tex0 resolves to one texture payload"
-            if override is not None
-            else (
-                "equivalent duplicate material documents; binding signatures identical; deterministic source selected; "
-                "ordered submesh and Material_N counts equal; every Tex0 resolves to one texture payload"
-                if material_resolution is not None
-                else "one material document; one mesh payload; ordered submesh and Material_N counts equal; every Tex0 resolves to one texture payload"
-            )
-        )
-        item.update(
-            {
-                "status": "converted",
-                "output": str(target),
-                "output_sha256": sha256_bytes(payload),
-                "output_bytes": len(payload),
-                "vertex_count": int(mesh.vertex_count),
-                "face_count": int(mesh.face_count),
-                "uv_count": len(mesh.mesh.uv),
-                "submeshes": [
-                    {
-                        "ordinal": index,
-                        "vertices": part[0],
-                        "faces": part[1],
-                        "uv_layers": part[2],
-                        "unknown": part[3],
-                    }
-                    for index, part in enumerate(parts)
-                ],
-                "materials": [
-                    {
-                        "ordinal": slot["ordinal"],
-                        "name": slot["name"],
-                        "tex0": slot["tex0_values"][0],
-                        "texture_source_sha256": texture["source_sha256"],
-                        "texture_output_sha256": texture["output_sha256"],
-                        "technique": slot.get("technique"),
-                    }
-                    for slot, texture in zip(slots, resolved_textures)
-                ],
-                "validation": validation,
-                "static_only": True,
-                "skeleton_omitted": True,
-                "animation_omitted": True,
-                "association_evidence": association_evidence,
-            }
-        )
+        item.update(_mesh_success_fields(target=target, payload=payload, converted=converted))
     except Exception as exc:  # noqa: BLE001 - preserve one auditable row per mesh failure
         item["reasons"].append(str(exc))
     return item, item["status"] != "converted"
