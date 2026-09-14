@@ -23,7 +23,7 @@ import tempfile
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 MAX_ENTRY_BYTES = 512 * 1024 * 1024

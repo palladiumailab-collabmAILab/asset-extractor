@@ -37,6 +37,13 @@ jobs:
           coverage run --branch -m unittest discover -s development/tests -t .
           coverage report --fail-under=55
 
+      - name: Run Ruff static checks
+        run: >-
+          git ls-files -z -- '*.py'
+          ':(exclude)programs/legacy/**'
+          ':(exclude)programs/vendor/**'
+          | xargs -0 ruff check
+
       - name: Validate JSON-Schema contracts
         run: >-
           python scripts/validate-schemas.py

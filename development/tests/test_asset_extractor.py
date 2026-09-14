@@ -17,7 +17,6 @@ sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 
 from asset_extractor import pipeline as pipeline_module  # noqa: E402
 from asset_extractor.cli import main  # noqa: E402
-from asset_extractor.common import sha256_file  # noqa: E402
 from asset_extractor.errors import ExtractionError  # noqa: E402
 from asset_extractor.inventory import DEFAULT_LIMITS, inspect_zip  # noqa: E402
 from asset_extractor.manifest import validate_manifest  # noqa: E402
@@ -399,7 +398,7 @@ class AssetExtractorTests(unittest.TestCase):
 
     def test_inventory_rejects_reserved_member(self) -> None:
         source = self.make_zip("reserved.zip", [("CON.txt", b"no")])
-        with zipfile.ZipFile(source) as archive:
+        with zipfile.ZipFile(source):
             with self.assertRaises(ExtractionError):
                 inspect_zip(source, DEFAULT_LIMITS)
 

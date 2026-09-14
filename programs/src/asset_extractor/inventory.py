@@ -6,7 +6,7 @@ from typing import Any
 
 from .common import config_hash, sha256_file, tool_metadata, utc_now
 from .errors import ExtractionError
-from .safety import normalized_member_name, validate_zip_infos
+from .safety import validate_zip_infos
 
 
 DEFAULT_LIMITS: dict[str, int | float] = {
