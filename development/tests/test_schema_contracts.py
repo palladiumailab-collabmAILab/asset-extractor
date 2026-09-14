@@ -31,9 +31,17 @@ class SchemaContractTests(unittest.TestCase):
                 check_schema(name, self.schema_root)
 
     def test_visual_reference_fixture_matches_its_schema(self) -> None:
-        path = PROJECT_ROOT / "development" / "config" / "character-asset-evidence-20260914.json"
-        document = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(validate_document(document, "visual-reference-evidence", self.schema_root), [])
+        for filename in (
+            "character-asset-evidence-20260914.json",
+            "kainin-asset-variants-20260914.json",
+        ):
+            with self.subTest(fixture=filename):
+                path = PROJECT_ROOT / "development" / "config" / filename
+                document = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(
+                    validate_document(document, "visual-reference-evidence", self.schema_root),
+                    [],
+                )
 
 
 if __name__ == "__main__":

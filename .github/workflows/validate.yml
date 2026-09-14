@@ -48,6 +48,7 @@ jobs:
         run: >-
           python scripts/validate-schemas.py
           --manifest visual-reference-evidence=development/config/character-asset-evidence-20260914.json
+          --manifest visual-reference-evidence=development/config/kainin-asset-variants-20260914.json
 
       - name: Validate hook
         run: |
