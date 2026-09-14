@@ -481,6 +481,56 @@ def validate_gltf(document: dict[str, Any], parts: list[tuple[int, int, int, int
     }
 
 
+def load_material_records(
+    entries: list[dict[str, Any]],
+    by_hash: dict[str, list[dict[str, Any]]],
+    mesh_hash: Any,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, dict[str, Any]]]]:
+    """Parse material catalogs and resolve each material to mesh payloads."""
+
+    material_records: list[dict[str, Any]] = []
+    material_by_mesh: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for row in entries:
+        if row.get("category") != "material":
+            continue
+        record: dict[str, Any] = {
+            "source": row["path"],
+            "source_sha256": row["sha256"],
+            "status": "unresolved",
+            "reasons": [],
+        }
+        try:
+            group, slots = ordered_material_slots(Path(row["path"]))
+            record.update(group)
+            record["slots"] = slots
+            candidates = mesh_logical_candidates(slots)
+            record["mesh_logical_candidates"] = candidates
+            matched: dict[str, dict[str, Any]] = {}
+            matched_logicals: dict[str, list[str]] = defaultdict(list)
+            for logical in candidates:
+                key = f"{mesh_hash(normalized_logical_path(logical)):08x}"
+                for match in resolve_rows(by_hash, [key], "mesh"):
+                    matched[str(match["sha256"])] = match
+                    matched_logicals[str(match["sha256"])].append(logical)
+            record["matched_meshes"] = [
+                {"sha256": digest, "path": match["path"], "logical_paths": matched_logicals[digest]}
+                for digest, match in matched.items()
+            ]
+            if len(matched) == 1:
+                record["status"] = "resolved-to-one-mesh-payload"
+                digest = next(iter(matched))
+                record["resolved_mesh_sha256"] = digest
+                material_by_mesh[digest][record["source_sha256"]] = record
+            elif not matched:
+                record["reasons"].append("no_mesh_hash_match")
+            else:
+                record["reasons"].append("multiple_mesh_payload_matches")
+        except Exception as exc:  # noqa: BLE001 - retain one record per upstream parse failure
+            record["reasons"].append(f"material_parse_failed:{exc}")
+        material_records.append(record)
+    return material_records, material_by_mesh
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -602,46 +652,7 @@ def main(argv: list[str] | None = None) -> int:
             digest: rows for digest, rows in mesh_rows_by_sha.items() if digest.lower() in selected
         }
 
-    material_records: list[dict[str, Any]] = []
-    material_by_mesh: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
-    for row in entries:
-        if row.get("category") != "material":
-            continue
-        record: dict[str, Any] = {
-            "source": row["path"],
-            "source_sha256": row["sha256"],
-            "status": "unresolved",
-            "reasons": [],
-        }
-        try:
-            group, slots = ordered_material_slots(Path(row["path"]))
-            record.update(group)
-            record["slots"] = slots
-            candidates = mesh_logical_candidates(slots)
-            record["mesh_logical_candidates"] = candidates
-            matched: dict[str, dict[str, Any]] = {}
-            matched_logicals: dict[str, list[str]] = defaultdict(list)
-            for logical in candidates:
-                key = f"{mesh_hash(normalized_logical_path(logical)):08x}"
-                for match in resolve_rows(by_hash, [key], "mesh"):
-                    matched[str(match["sha256"])] = match
-                    matched_logicals[str(match["sha256"])].append(logical)
-            record["matched_meshes"] = [
-                {"sha256": digest, "path": match["path"], "logical_paths": matched_logicals[digest]}
-                for digest, match in matched.items()
-            ]
-            if len(matched) == 1:
-                record["status"] = "resolved-to-one-mesh-payload"
-                digest = next(iter(matched))
-                record["resolved_mesh_sha256"] = digest
-                material_by_mesh[digest][record["source_sha256"]] = record
-            elif not matched:
-                record["reasons"].append("no_mesh_hash_match")
-            else:
-                record["reasons"].append("multiple_mesh_payload_matches")
-        except Exception as exc:
-            record["reasons"].append(f"material_parse_failed:{exc}")
-        material_records.append(record)
+    material_records, material_by_mesh = load_material_records(entries, by_hash, mesh_hash)
 
     outputs: list[dict[str, Any]] = []
     unresolved: list[dict[str, Any]] = []
