@@ -757,13 +757,23 @@ def _join_character(
     return joined, normalized_rows, unresolved
 
 
-def _assemble_manifest(
+def _load_join_inputs(
     table_path: Path,
     catalog_paths: Iterable[Path],
     output_dir: Path,
-    evidence_path: Path | None = None,
-) -> dict[str, Any]:
-    """Assemble join results without creating or writing the publication tree."""
+    evidence_path: Path | None,
+) -> tuple[
+    Path,
+    Path,
+    list[dict[str, str]],
+    tuple[str, ...],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[tuple[str, str], dict[str, Any]],
+]:
+    """Validate publication inputs and load independent source indexes."""
 
     table_path = table_path.resolve()
     catalog_paths = [path.resolve() for path in catalog_paths]
@@ -772,11 +782,33 @@ def _assemble_manifest(
         raise CharacterManifestError(f"refusing to overwrite existing output directory: {output_dir}")
     if not table_path.is_file() or table_path.is_symlink():
         raise CharacterManifestError(f"character table is missing or unsafe: {table_path}")
+
     rows = load_character_table(table_path)
     input_columns = character_table_columns(table_path)
     model_rows, catalog_info = load_catalogs(catalog_paths)
     evidence_meta, evidence_document = load_evidence(evidence_path.resolve() if evidence_path else None)
     evidence_by_path = _evidence_lookup(evidence_meta)
+    return (
+        table_path,
+        output_dir,
+        rows,
+        input_columns,
+        model_rows,
+        catalog_info,
+        evidence_meta,
+        evidence_document,
+        evidence_by_path,
+    )
+
+
+def _join_characters(
+    rows: list[dict[str, str]],
+    model_rows: list[dict[str, Any]],
+    evidence_by_path: dict[tuple[str, str], dict[str, Any]],
+    evidence_document: dict[str, Any] | None,
+    evidence_meta: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Join every catalog character and retain normalized/unresolved rows."""
 
     characters: list[dict[str, Any]] = []
     normalized_rows: list[dict[str, Any]] = []
@@ -792,8 +824,15 @@ def _assemble_manifest(
         characters.append(joined)
         normalized_rows.extend(rows_for_character)
         unresolved.extend(failures_for_character)
+    return characters, normalized_rows, unresolved
 
-    counts = {
+
+def _join_counts(
+    characters: list[dict[str, Any]], unresolved: list[dict[str, Any]]
+) -> dict[str, int]:
+    """Summarize join outcomes without mutating character records."""
+
+    return {
         "characters": len(characters),
         "candidate_models": sum(item["candidate_count"] for item in characters),
         "joined_models": sum(
@@ -809,8 +848,22 @@ def _assemble_manifest(
         ),
         "unresolved_records": len(unresolved),
     }
-    normalized_path = output_dir / "normalized-character-assets.tsv"
-    manifest: dict[str, Any] = {
+
+
+def _build_join_manifest(
+    *,
+    table_path: Path,
+    output_dir: Path,
+    input_columns: tuple[str, ...],
+    rows: list[dict[str, str]],
+    catalog_info: list[dict[str, Any]],
+    evidence_meta: dict[str, Any] | None,
+    characters: list[dict[str, Any]],
+    unresolved: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build the character publication document without writing files."""
+
+    return {
         "schema_version": 1,
         "stage": "character-asset-join",
         "created_at": utc_now(),
@@ -838,11 +891,49 @@ def _assemble_manifest(
         },
         "catalogs": catalog_info,
         "evidence_map": evidence_meta,
-        "counts": counts,
-        "normalized_tsv": str(normalized_path),
+        "counts": _join_counts(characters, unresolved),
+        "normalized_tsv": str(output_dir / "normalized-character-assets.tsv"),
         "characters": characters,
         "unresolved": unresolved,
     }
+
+
+def _assemble_manifest(
+    table_path: Path,
+    catalog_paths: Iterable[Path],
+    output_dir: Path,
+    evidence_path: Path | None = None,
+) -> dict[str, Any]:
+    """Assemble join results without creating or writing the publication tree."""
+
+    (
+        table_path,
+        output_dir,
+        rows,
+        input_columns,
+        model_rows,
+        catalog_info,
+        evidence_meta,
+        evidence_document,
+        evidence_by_path,
+    ) = _load_join_inputs(table_path, catalog_paths, output_dir, evidence_path)
+    characters, normalized_rows, unresolved = _join_characters(
+        rows,
+        model_rows,
+        evidence_by_path,
+        evidence_document,
+        evidence_meta,
+    )
+    manifest = _build_join_manifest(
+        table_path=table_path,
+        output_dir=output_dir,
+        input_columns=input_columns,
+        rows=rows,
+        catalog_info=catalog_info,
+        evidence_meta=evidence_meta,
+        characters=characters,
+        unresolved=unresolved,
+    )
     return {"manifest": manifest, "normalized_rows": normalized_rows}
 
 
