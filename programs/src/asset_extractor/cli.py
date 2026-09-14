@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+from .backends import BackendRequest, extract_with_backend
 from .common import atomic_write_json
 from .errors import ExtractionError
 from .inventory import DEFAULT_LIMITS, build_scan_manifest
@@ -39,6 +40,22 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--best-effort", action="store_true", help="record missing inputs and continue where safe")
     extract.add_argument("--resume", action="store_true", help="reuse only a manifest and output tree whose hashes and key match")
     extract.add_argument("--report", type=Path, help="write a success or failure JSON report atomically")
+    extract.add_argument(
+        "--backend",
+        choices=("builtin", "auto", "neoxtractor", "neox-tools"),
+        default="builtin",
+        help="select the maintained builtin extractor or a dedicated NetEase backend",
+    )
+    extract.add_argument(
+        "--game-profile",
+        choices=("generic", "onmyoji"),
+        default="onmyoji",
+        help="profile used by dedicated backend auto-selection",
+    )
+    extract.add_argument("--neoxtractor-root", type=Path)
+    extract.add_argument("--neoxtractor-config", type=Path)
+    extract.add_argument("--neox-tools-root", type=Path)
+    extract.add_argument("--backend-python", type=Path)
     _add_limits(extract)
 
     validate = subparsers.add_parser("validate-manifest", help="validate one or more manifests and their output hashes")
@@ -60,6 +77,51 @@ def _add_limits(parser: argparse.ArgumentParser) -> None:
 
 def _status_exit_code(status: str) -> int:
     return {"complete": 0, "partial": 1, "failed": 2}.get(status, 2)
+
+
+def _run_extraction(arguments: argparse.Namespace) -> dict[str, object]:
+    if arguments.backend == "builtin":
+        return extract_inputs(
+            arguments.inputs,
+            arguments.output,
+            profile=arguments.profile,
+            strict=not arguments.best_effort,
+            limits=_limits(arguments),
+            resume=arguments.resume,
+            report=arguments.report,
+        )
+
+    source_paths = tuple(Path(raw).expanduser().resolve() for raw in arguments.inputs)
+    output = resolve_output_path(arguments.output)
+    if arguments.report:
+        report = resolve_output_path(arguments.report)
+        assert_output_disjoint([*source_paths, output], report)
+    else:
+        report = None
+    limit_overrides = {
+        name: getattr(arguments, name)
+        for name in ("max_entries", "max_member_bytes", "max_total_bytes", "max_ratio")
+        if getattr(arguments, name) is not None
+    }
+    manifest = extract_with_backend(
+        BackendRequest(
+            source_paths=source_paths,
+            output=output,
+            backend=arguments.backend,
+            game_profile=arguments.game_profile,
+            profile=arguments.profile,
+            strict=not arguments.best_effort,
+            limits=limit_overrides,
+            resume=arguments.resume,
+            neoxtractor_root=arguments.neoxtractor_root,
+            neoxtractor_config=arguments.neoxtractor_config,
+            neox_tools_root=arguments.neox_tools_root,
+            backend_python=arguments.backend_python,
+        )
+    )
+    if report is not None:
+        atomic_write_json(report, manifest)
+    return manifest
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,15 +160,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(json.dumps(manifest, ensure_ascii=False, indent=2))
             return _status_exit_code(manifest["status"])
-        manifest = extract_inputs(
-            arguments.inputs,
-            arguments.output,
-            profile=arguments.profile,
-            strict=not arguments.best_effort,
-            limits=_limits(arguments),
-            resume=arguments.resume,
-            report=arguments.report,
-        )
+        manifest = _run_extraction(arguments)
         print(json.dumps(manifest, ensure_ascii=False, indent=2))
         return _status_exit_code(manifest["status"])
     except (OSError, ExtractionError) as exc:

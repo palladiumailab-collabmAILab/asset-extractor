@@ -27,6 +27,7 @@ OBB・ゲーム資産・生成バイナリは容量と権利上の理由でGitHu
 ```powershell
 python programs/asset_extractor.py scan input/raw/sample.zip --report output/runs/scan/run-manifest.json
 python programs/asset_extractor.py extract input/raw/sample.zip --output output/runs/sample
+python programs/asset_extractor.py extract input/raw/res.npk --output output/runs/onmyoji --backend auto --game-profile onmyoji
 python programs/asset_extractor.py extract input/raw/sample.zip --output output/runs/sample --resume
 python programs/asset_extractor.py validate-manifest output/runs/sample/run-manifest.json
 python programs/asset_extractor.py match-assets --dictionary game.csv --assets assets.json --output matches.json

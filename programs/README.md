@@ -120,6 +120,12 @@ temporary sibling directory and commit it with an atomic rename, so a
 preflight or backend failure cannot leave a misleading empty run that blocks a
 retry.
 
+The maintained CLI exposes the same backend selection through
+`asset_extractor.py extract --backend auto|builtin|neoxtractor|neox-tools`.
+`builtin` remains the default for backward compatibility; `auto` delegates a
+single NPK/EXPK input to the isolated NetEase wrapper when its profile and
+checkout satisfy the selection policy.
+
 ## Character / material join
 
 `prepare_textured_pilot.py` accepts `--runtime-python` when the launcher
