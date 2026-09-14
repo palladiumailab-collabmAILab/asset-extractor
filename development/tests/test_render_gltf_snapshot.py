@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT / "programs"))
 SCRIPT = PROJECT_ROOT / "programs" / "render_gltf_snapshot.py"
 SPEC = importlib.util.spec_from_file_location("render_gltf_snapshot", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None

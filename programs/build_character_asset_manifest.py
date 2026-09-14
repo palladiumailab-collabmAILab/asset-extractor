@@ -23,17 +23,15 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
-import os
 import re
 import sys
-import tempfile
 import unicodedata
 from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+from runtime_artifacts import json_bytes, sha256_file, utc_now, write_bytes_atomic
 
 
 SIX_COLUMN_TABLE_COLUMNS = (
@@ -95,14 +93,6 @@ ALLOWED_REFERENCE_KINDS = {"image", "webpage", "document"}
 
 class CharacterManifestError(ValueError):
     """Raised when an input table/catalog cannot be joined safely."""
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def normalized_text(value: Any) -> str:
@@ -823,7 +813,7 @@ def _assemble_manifest(
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "stage": "character-asset-join",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": utc_now(),
         "status": "complete",
         "source_policy": "read-only catalog join; character table and evidence are metadata; raw payloads are untouched",
         "policy": {
@@ -875,24 +865,14 @@ def build_manifest(
 
 
 def _new_file(path: Path, payload: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        raise CharacterManifestError(f"refusing to overwrite output file: {path}")
-    with tempfile.NamedTemporaryFile(
-        mode="wb", dir=path.parent, prefix=f".{path.name}.", suffix=".partial", delete=False
-    ) as stream:
-        temporary = Path(stream.name)
-        stream.write(payload)
     try:
-        if path.exists():
-            raise CharacterManifestError(f"refusing to overwrite output file: {path}")
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+        write_bytes_atomic(path, payload, overwrite=False)
+    except FileExistsError as exc:
+        raise CharacterManifestError(f"refusing to overwrite output file: {path}") from exc
 
 
 def write_json_new(path: Path, value: dict[str, Any]) -> None:
-    _new_file(path, (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    _new_file(path, json_bytes(value))
 
 
 def write_tsv_new(path: Path, rows: list[dict[str, Any]]) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT / "programs"))
 MODULE_PATH = PROJECT_ROOT / "programs" / "run_pilot.py"
 SPEC = importlib.util.spec_from_file_location("run_pilot", MODULE_PATH)
 assert SPEC and SPEC.loader

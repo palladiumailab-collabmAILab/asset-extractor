@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT / "programs"))
 sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 MODULE_PATH = PROJECT_ROOT / "programs" / "build_character_asset_manifest.py"
 SPEC = importlib.util.spec_from_file_location("build_character_asset_manifest", MODULE_PATH)

@@ -13,23 +13,27 @@ from __future__ import annotations
 import argparse
 import base64
 import copy
-import hashlib
 import importlib.metadata
 import importlib.util
 import json
 import math
-import os
 import re
 import struct
 import subprocess
 import sys
-import tempfile
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Iterable
+
+from runtime_artifacts import (
+    json_bytes,
+    sha256_bytes,
+    sha256_file,
+    utc_now,
+    write_bytes_atomic,
+)
 
 HASH_SUFFIX = re.compile(r"([0-9a-fA-F]{8})$")
 IMAGE_EXTENSIONS = ("png", "jpg", "jpeg", "tga", "bmp", "dds", "ktx", "pvr", "astc")
@@ -118,29 +122,11 @@ def maybe_delegate_runtime(
     return completed.returncode
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def write_atomic(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        raise PublicationError(f"refusing to overwrite output: {path}")
-    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.", suffix=".partial", delete=False) as handle:
-        temporary = Path(handle.name)
-        handle.write(data)
     try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def json_bytes(value: Any) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        write_bytes_atomic(path, data, overwrite=False)
+    except FileExistsError as exc:
+        raise PublicationError(f"refusing to overwrite output: {path}") from exc
 
 
 def normalized_logical_path(value: str) -> str:
@@ -556,7 +542,7 @@ def resolve_texture_output(
         )
     ]
     png, width, height, alpha_used = png_from_source(Path(texture_row["path"]), convert_image)
-    png_sha = hashlib.sha256(png).hexdigest()
+    png_sha = sha256_bytes(png)
     texture_target = output / "textures" / png_sha[:2] / f"{png_sha}.png"
     if png_sha not in texture_outputs:
         write_atomic(texture_target, png)
@@ -729,7 +715,7 @@ def publish_mesh(
             {
                 "status": "converted",
                 "output": str(target),
-                "output_sha256": hashlib.sha256(payload).hexdigest(),
+                "output_sha256": sha256_bytes(payload),
                 "output_bytes": len(payload),
                 "vertex_count": int(mesh.vertex_count),
                 "face_count": int(mesh.face_count),
@@ -928,7 +914,7 @@ def main(argv: list[str] | None = None) -> int:
     resolver = {
         "schema_version": 1,
         "stage": "pilot-static-resolver",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": utc_now(),
         "run_root": str(run_root),
         "policy": {
             "hash": "low32 NeoX mesh_hash(normalized logical path)",
@@ -952,7 +938,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest = {
         "schema_version": 1,
         "stage": "textured-static-pilot",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": utc_now(),
         "status": publication_status(outputs),
         "source_policy": "read-only",
         "run_root": str(run_root),

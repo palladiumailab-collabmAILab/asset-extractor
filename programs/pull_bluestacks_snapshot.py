@@ -9,17 +9,16 @@ remote files.  Every invocation requires a new local output directory.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
 import shlex
 import shutil
 import subprocess
-import tempfile
-from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+from runtime_artifacts import sha256_file, sha256_json, utc_now, write_json_atomic
 
 
 VERSION = "0.1.0"
@@ -37,40 +36,6 @@ DEFAULT_MAX_TOTAL_BYTES = 64 * 1024**3
 
 class AcquisitionError(RuntimeError):
     """An acquisition precondition or integrity check failed."""
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(4 * 1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def stable_hash(value: object) -> str:
-    encoded = json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def write_json_atomic(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        newline="\n",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as stream:
-        temporary = Path(stream.name)
-        json.dump(value, stream, ensure_ascii=False, indent=2)
-        stream.write("\n")
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temporary, path)
 
 
 def resolve_adb(raw: str) -> Path:
@@ -265,7 +230,7 @@ def _capture_remote_root(
             digest = sha256_file(local_path)
             files.append(
                 {
-                    "asset_id": stable_hash(
+                    "asset_id": sha256_json(
                         {
                             "serial": serial,
                             "remote_path": remote_path,
@@ -345,7 +310,7 @@ def _capture_installed_apks(
                 raise AcquisitionError(f"APK size mismatch after pull: {remote_path}")
             files.append(
                 {
-                    "asset_id": stable_hash(
+                    "asset_id": sha256_json(
                         {
                             "serial": serial,
                             "remote_path": remote_path,
@@ -403,7 +368,7 @@ def _build_snapshot_manifest(
         "schema_version": 1,
         "operation": "capture-bluestacks-raw",
         "created_at": started_at,
-        "completed_at": datetime.now(timezone.utc).astimezone().isoformat(),
+        "completed_at": utc_now(),
         "status": status,
         "tool": {
             "name": "pull_bluestacks_snapshot.py",
@@ -426,7 +391,7 @@ def _build_snapshot_manifest(
                 "max_file_bytes": max_file_bytes,
                 "max_total_bytes": max_total_bytes,
             },
-            "configuration_sha256": stable_hash(
+            "configuration_sha256": sha256_json(
                 {
                     "package": package,
                     "remote_roots": remote_roots,
@@ -481,7 +446,7 @@ def snapshot(
     output.parent.mkdir(parents=True, exist_ok=True)
     output.mkdir()
 
-    started_at = datetime.now(timezone.utc).astimezone().isoformat()
+    started_at = utc_now()
     failures: list[dict[str, str]] = []
     files: list[dict[str, Any]] = []
     roots_manifest: list[dict[str, Any]] = []

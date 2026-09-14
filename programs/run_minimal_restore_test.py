@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -24,6 +23,8 @@ import tempfile
 import zipfile
 import zlib
 from typing import Any, Iterable
+
+from runtime_artifacts import digest_file, sha256_bytes, utc_now
 
 
 PROGRAMS_ROOT = Path(__file__).resolve().parent
@@ -100,21 +101,8 @@ class NestedCandidate:
     detection: dict[str, Any]
 
 
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
 def _sha256_file(path: Path) -> tuple[str, int]:
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as handle:
-        while True:
-            block = handle.read(CHUNK_SIZE)
-            if not block:
-                break
-            digest.update(block)
-            size += len(block)
-    return digest.hexdigest(), size
+    return digest_file(path, CHUNK_SIZE)
 
 
 def _normalise_member_name(member: str) -> str:
@@ -520,7 +508,7 @@ def _extract_nested_candidate(
         raise MinimalRestoreError("restored nested output path escaped the run directory")
     target.parent.mkdir(parents=True, exist_ok=False)
     partial = target.with_name(target.name + ".partial")
-    payload_sha256 = hashlib.sha256(candidate.payload).hexdigest()
+    payload_sha256 = sha256_bytes(candidate.payload)
     payload_crc32 = f"{zlib.crc32(candidate.payload) & 0xFFFFFFFF:08x}"
     try:
         with partial.open("xb") as output_stream:
@@ -607,7 +595,7 @@ def _new_manifest(
     return {
         "schema_version": 1,
         "operation": "minimal-archive-restore-test",
-        "created_at": _utc_now(),
+        "created_at": utc_now(),
         "status": "failed",
         "tool": {"name": TOOL_NAME, "version": TOOL_VERSION, "python": sys.version.split()[0]},
         "policy": {

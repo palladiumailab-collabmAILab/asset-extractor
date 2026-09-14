@@ -12,18 +12,18 @@ point writes beside its input path.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib
 import json
 import os
 import shutil
 import struct
 import sys
-import tempfile
 import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
+
+from runtime_artifacts import sha256_bytes, sha256_file, sha256_json, write_json_atomic
 
 
 MAX_ENTRY_BYTES = 512 * 1024 * 1024
@@ -31,42 +31,8 @@ MAX_TOTAL_BYTES = 8 * 1024 * 1024 * 1024
 MAX_RATIO = 10_000.0
 
 
-def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(chunk_size):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def sha256_json(value: Any) -> str:
-    data = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(data).hexdigest()
-
-
 def write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            newline="\n",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            temporary = Path(handle.name)
-            json.dump(value, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-        temporary = None
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+    write_json_atomic(path, value)
 
 
 def within(path: Path, root: Path) -> bool:
@@ -262,9 +228,9 @@ def tool_version(repo: Path) -> dict[str, Any]:
         "repository": str(repo),
         "commit": commit,
         "tree": tree,
-        "tracked_files_sha256": hashlib.sha256(tracked).hexdigest(),
+        "tracked_files_sha256": sha256_bytes(tracked),
         "working_tree_clean": not bool(diff),
-        "working_tree_diff_sha256": hashlib.sha256(diff).hexdigest(),
+        "working_tree_diff_sha256": sha256_bytes(diff),
     }
 
 

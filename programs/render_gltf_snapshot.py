@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import hashlib
 import io
 import json
 import math
@@ -21,6 +20,8 @@ from typing import Any
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+from runtime_artifacts import sha256_file
 
 
 COMPONENTS: dict[int, tuple[str, int]] = {
@@ -300,7 +301,7 @@ def main() -> int:
     image, report = render(document, binary, 768, 768, caption)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     image.save(args.output, format="PNG")
-    source_hash = hashlib.sha256(args.source.read_bytes()).hexdigest()
+    source_hash = sha256_file(args.source)
     report.update({"source": str(args.source.resolve()), "source_sha256": source_hash, "output": str(args.output.resolve()), "source_bytes": args.source.stat().st_size, "output_bytes": args.output.stat().st_size})
     args.output.with_suffix(".json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False))
