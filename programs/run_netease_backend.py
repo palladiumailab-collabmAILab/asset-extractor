@@ -127,6 +127,147 @@ def _normalized_external_entries(
     return entries, failures
 
 
+def _validate_backend_request(
+    source: Path,
+    output: Path,
+    requested_backend: str,
+    game_profile: str,
+    neox_root: Path | None,
+    neox_config: Path | None,
+    neox_tools_root: Path | None,
+) -> tuple[Path, Path, str, str, str]:
+    """Resolve paths, select a backend, and validate dedicated prerequisites."""
+
+    source = source.expanduser().resolve()
+    output = output.expanduser().resolve()
+    if not source.is_file() or source.is_symlink():
+        raise ExtractionError(f"source must be an existing regular non-symlink file: {source}")
+    if output.exists():
+        raise ExtractionError(f"run root already exists: {output}")
+    selected, reason = select_backend(requested_backend, source, game_profile, neox_root, neox_tools_root)
+    if selected == "neoxtractor":
+        if neox_root is None or neox_config is None or not neox_config.is_file():
+            raise ExtractionError("NeoXtractor checkout/config is unavailable")
+    elif selected == "neox-tools" and neox_tools_root is None:
+        raise ExtractionError("neox_tools checkout is unavailable")
+    return source, output, selected, reason, sha256_file(source)
+
+
+def _run_builtin_backend(
+    source: Path,
+    output: Path,
+    reason: str,
+) -> dict[str, Any]:
+    """Delegate builtin extraction and retain the backend selection claim."""
+
+    manifest = extract_inputs([str(source)], output, profile="auto")
+    manifest["claims"].append({"claim": f"backend selection: {reason}", "certainty": "fact"})
+    return manifest
+
+
+def _build_external_manifest(
+    *,
+    source: Path,
+    before: str,
+    selected: str,
+    reason: str,
+    requested_backend: str,
+    game_profile: str,
+    index: dict[str, Any],
+    result: dict[str, Any],
+    staging: Path,
+) -> dict[str, Any]:
+    """Normalize external output and create the dedicated backend manifest."""
+
+    after = sha256_file(source)
+    entries, failures = _normalized_external_entries(source, before, selected, result, staging)
+    successes = sum(item["status"] == "extracted" for item in entries)
+    if before != after:
+        failures.append({"entry_index": None, "stage": "source-audit", "error": "source changed during extraction"})
+    status = "complete" if entries and successes == len(entries) and not failures else "partial" if successes else "failed"
+    return {
+        "schema_version": 1,
+        "operation": "extract-netease-backend",
+        "created_at": utc_now(),
+        "status": status,
+        "source": {
+            "path": str(source),
+            "sha256_before": before,
+            "sha256_after": after,
+            "unchanged": before == after,
+        },
+        "selection": {
+            "requested": requested_backend,
+            "selected": selected,
+            "reason": reason,
+            "game_profile": game_profile,
+        },
+        "backend": result.get("tool_metadata", {}),
+        "configuration_sha256": config_hash({
+            "requested_backend": requested_backend,
+            "selected_backend": selected,
+            "game_profile": game_profile,
+            "backend_revision": result.get("tool_metadata", {}).get("commit"),
+            "backend_config_sha256": result.get("tool_metadata", {}).get("config_sha256"),
+        }),
+        "index": {key: value for key, value in index.items() if key != "entries"},
+        "entries": entries,
+        "summary": {"entries": len(entries), "extracted": successes, "failed": len(entries) - successes},
+        "failures": failures,
+        "safety": {
+            "source_read_only": True,
+            "new_run_root": True,
+            "output_paths_revalidated": True,
+            "backend_exit_or_return_alone_is_not_success": True,
+        },
+    }
+
+
+def _run_external_backend(
+    *,
+    source: Path,
+    output: Path,
+    before: str,
+    selected: str,
+    reason: str,
+    requested_backend: str,
+    game_profile: str,
+    neox_root: Path | None,
+    neox_config: Path | None,
+    neox_tools_root: Path | None,
+) -> dict[str, Any]:
+    """Execute a dedicated backend in staging and atomically commit its result."""
+
+    index = run_pilot.parse_index(source)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    staging: Path | None = Path(tempfile.mkdtemp(prefix=f".{output.name}.partial-", dir=output.parent))
+    try:
+        if selected == "neoxtractor":
+            result = run_pilot.run_neox(source, staging / "raw", index, neox_root, neox_config)
+        else:
+            result = run_pilot.run_neox_tools(source, staging / "raw", index, neox_tools_root)
+        manifest = _build_external_manifest(
+            source=source,
+            before=before,
+            selected=selected,
+            reason=reason,
+            requested_backend=requested_backend,
+            game_profile=game_profile,
+            index=index,
+            result=result,
+            staging=staging,
+        )
+        run_pilot.write_json(staging / "backend-run-manifest.json", manifest)
+        if output.exists():
+            raise ExtractionError(f"output appeared before atomic run commit: {output}")
+        os.replace(staging, output)
+        staging = None
+        return manifest
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+
+
 def run_backend(
     *,
     source: Path,
@@ -137,85 +278,29 @@ def run_backend(
     neox_config: Path | None,
     neox_tools_root: Path | None,
 ) -> dict[str, Any]:
-    source = source.expanduser().resolve()
-    output = output.expanduser().resolve()
-    if not source.is_file() or source.is_symlink():
-        raise ExtractionError(f"source must be an existing regular non-symlink file: {source}")
-    if output.exists():
-        raise ExtractionError(f"run root already exists: {output}")
-    selected, reason = select_backend(requested_backend, source, game_profile, neox_root, neox_tools_root)
-    before = sha256_file(source)
-
+    source, output, selected, reason, before = _validate_backend_request(
+        source,
+        output,
+        requested_backend,
+        game_profile,
+        neox_root,
+        neox_config,
+        neox_tools_root,
+    )
     if selected == "builtin":
-        manifest = extract_inputs([str(source)], output, profile="auto")
-        manifest["claims"].append({"claim": f"backend selection: {reason}", "certainty": "fact"})
-        return manifest
-
-    if selected == "neoxtractor":
-        if neox_root is None or neox_config is None or not neox_config.is_file():
-            raise ExtractionError("NeoXtractor checkout/config is unavailable")
-    elif neox_tools_root is None:
-        raise ExtractionError("neox_tools checkout is unavailable")
-
-    index = run_pilot.parse_index(source)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=f".{output.name}.partial-", dir=output.parent))
-    try:
-        if selected == "neoxtractor":
-            result = run_pilot.run_neox(source, staging / "raw", index, neox_root, neox_config)
-        else:
-            result = run_pilot.run_neox_tools(source, staging / "raw", index, neox_tools_root)
-        after = sha256_file(source)
-        entries, failures = _normalized_external_entries(source, before, selected, result, staging)
-        successes = sum(item["status"] == "extracted" for item in entries)
-        if before != after:
-            failures.append({"entry_index": None, "stage": "source-audit", "error": "source changed during extraction"})
-        status = "complete" if entries and successes == len(entries) and not failures else "partial" if successes else "failed"
-        manifest = {
-            "schema_version": 1,
-            "operation": "extract-netease-backend",
-            "created_at": utc_now(),
-            "status": status,
-            "source": {
-                "path": str(source),
-                "sha256_before": before,
-                "sha256_after": after,
-                "unchanged": before == after,
-            },
-            "selection": {
-                "requested": requested_backend,
-                "selected": selected,
-                "reason": reason,
-                "game_profile": game_profile,
-            },
-            "backend": result.get("tool_metadata", {}),
-            "configuration_sha256": config_hash({
-                "requested_backend": requested_backend,
-                "selected_backend": selected,
-                "game_profile": game_profile,
-                "backend_revision": result.get("tool_metadata", {}).get("commit"),
-                "backend_config_sha256": result.get("tool_metadata", {}).get("config_sha256"),
-            }),
-            "index": {key: value for key, value in index.items() if key != "entries"},
-            "entries": entries,
-            "summary": {"entries": len(entries), "extracted": successes, "failed": len(entries) - successes},
-            "failures": failures,
-            "safety": {
-                "source_read_only": True,
-                "new_run_root": True,
-                "output_paths_revalidated": True,
-                "backend_exit_or_return_alone_is_not_success": True,
-            },
-        }
-        run_pilot.write_json(staging / "backend-run-manifest.json", manifest)
-        if output.exists():
-            raise ExtractionError(f"output appeared before atomic run commit: {output}")
-        os.replace(staging, output)
-        staging = None
-        return manifest
-    finally:
-        if staging is not None:
-            shutil.rmtree(staging, ignore_errors=True)
+        return _run_builtin_backend(source, output, reason)
+    return _run_external_backend(
+        source=source,
+        output=output,
+        before=before,
+        selected=selected,
+        reason=reason,
+        requested_backend=requested_backend,
+        game_profile=game_profile,
+        neox_root=neox_root,
+        neox_config=neox_config,
+        neox_tools_root=neox_tools_root,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
