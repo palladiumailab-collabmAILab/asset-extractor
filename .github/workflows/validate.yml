@@ -32,8 +32,10 @@ jobs:
           test "$(wc -c < AGENTS.md)" -le 32768
           git diff --check "$(git hash-object -t tree /dev/null)" HEAD
 
-      - name: Run asset extractor tests
-        run: python -m unittest discover -s development/tests -t .
+      - name: Run asset extractor tests with branch coverage
+        run: |
+          coverage run --branch -m unittest discover -s development/tests -t .
+          coverage report --fail-under=55
 
       - name: Validate JSON-Schema contracts
         run: >-

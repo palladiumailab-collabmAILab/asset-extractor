@@ -21,6 +21,8 @@
 **/venv/
 **/__pycache__/
 *.pyc
+.coverage
+.coverage.*
 *.blend
 *.glb
 *.gltf
