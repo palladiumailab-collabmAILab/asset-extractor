@@ -118,8 +118,11 @@ manifestを残し、未設定・未解決・曖昧な結果は`partial`または
 
 BlueStacksを使う場合は`source`の代わりに`acquisition`を設定します。これは
 PythonからADB実行ファイルを呼び出すため、ADB接続・読み取り可能なパス・
-NeoXtractorのcheckoutとその依存環境は別途必要です。参照画像の比較は候補順位を
-作るだけで、画像からUVやTex0を推測して書き換えません。
+NeoXtractorのcheckoutとその依存環境は別途必要です。専用backendを複数入力へ適用
+した場合は、各backend実行を保持した`backend-runs-manifest.json`を生成し、汎用
+`run-manifest.json`とは別の契約として扱います。参照画像の比較は候補順位を作るだけ
+で、十分な特徴点インライアとスコア差がない候補は採用せず、画像からUVやTex0を推測
+して書き換えません。
 
 設定例は[development/config/pipeline.example.json](development/config/pipeline.example.json)、
 スキーマは[development/schemas/pipeline-config.schema.json](development/schemas/pipeline-config.schema.json)

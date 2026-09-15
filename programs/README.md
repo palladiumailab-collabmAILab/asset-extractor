@@ -131,10 +131,12 @@ checkout satisfy the selection policy.
 `prepare_textured_pilot.py` accepts `--runtime-python` when the launcher
 environment does not contain NeoXtractor's binary texture decoders. The script
 re-executes itself with that Python executable before creating the output run,
-checks `Pillow`, `numpy`, and `texture2ddecoder`, and records the resolved
+checks the base `Pillow` and `numpy` dependencies, and records the resolved
 runtime, versions, and preflight result in both resolver and publication
-manifests. The delegated process still runs this maintained Python script; no
-shell conversion step is introduced.
+manifests. The upstream `texture2ddecoder` is loaded lazily only for compressed
+textures such as KTX, DDS, PVR, or ASTC; ordinary PNG/JPEG/TGA publication does
+not require it. The delegated process still runs this maintained Python script;
+no shell conversion step is introduced.
 
 ```powershell
 python programs/prepare_textured_pilot.py `
@@ -177,8 +179,9 @@ python programs/build_character_asset_manifest.py `
   --output C:\path\to\new-character-join-run
 ```
 
-`render_gltf_snapshot.py` renders a self-contained textured glTF with the
-Python/Pillow software rasterizer. Use `--title` for the evidence label; the
-renderer derives its default from the current glTF and never carries a
-character name over from another run. Existing PNG and JSON outputs are not
-overwritten.
+`render_gltf_snapshot.py` renders a self-contained textured glTF with
+`trimesh` and `pyrender` through an offscreen OpenGL context. Use `--title` for
+the evidence label; the renderer derives its default from the current glTF and
+never carries a character name over from another run. Existing PNG and JSON
+outputs are not overwritten. Install `requirements-vision.txt` for this
+optional rendering stage.

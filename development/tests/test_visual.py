@@ -26,6 +26,9 @@ class VisualComparisonTests(unittest.TestCase):
         self.assertIn(result["status"], {"scored", "unavailable"})
         self.assertEqual(result["reference"], str(reference.resolve()))
         self.assertEqual(result["candidate"], str(candidate.resolve()))
+        if result["status"] == "scored":
+            self.assertFalse(result["accepted"])
+            self.assertEqual(result["confidence"], "low")
 
 
 if __name__ == "__main__":

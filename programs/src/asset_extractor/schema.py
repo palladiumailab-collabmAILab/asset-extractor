@@ -16,6 +16,7 @@ from typing import Any, Iterable
 
 SCHEMA_NAMES = (
     "asset-name-match",
+    "backend-runs-manifest",
     "bluestacks-snapshot",
     "character-asset-manifest",
     "minimal-restore-test",

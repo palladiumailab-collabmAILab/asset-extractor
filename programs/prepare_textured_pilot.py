@@ -37,29 +37,49 @@ from runtime_artifacts import (
 
 HASH_SUFFIX = re.compile(r"([0-9a-fA-F]{8})$")
 IMAGE_EXTENSIONS = ("png", "jpg", "jpeg", "tga", "bmp", "dds", "ktx", "pvr", "astc")
-RUNTIME_DEPENDENCIES = {
+BASE_RUNTIME_DEPENDENCIES = {
     "PIL": "Pillow",
     "numpy": "numpy",
+}
+OPTIONAL_RUNTIME_DEPENDENCIES = {
     "texture2ddecoder": "texture2ddecoder",
 }
+RUNTIME_DEPENDENCIES = {**BASE_RUNTIME_DEPENDENCIES, **OPTIONAL_RUNTIME_DEPENDENCIES}
 
 
 class PublicationError(ValueError):
     pass
 
 
+SUBPROCESS_TIMEOUT_SECONDS = 30 * 60
+
+
 def load_neoxtractor_modules(source_tree: Path) -> tuple[Any, Any, Any, Any, Any]:
     """Load the pinned upstream components without leaking import-path state."""
+
+    def lazy_convert_image(data: bytes, extension: str) -> Any:
+        """Load the upstream decoder only when a compressed texture needs it."""
+
+        original_path = sys.path.copy()
+        sys.path.insert(0, str(source_tree))
+        try:
+            from core.images import convert_image as upstream_convert_image  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise PublicationError(
+                f"compressed texture decoder unavailable for .{extension}: {exc}"
+            ) from exc
+        finally:
+            sys.path[:] = original_path
+        return upstream_convert_image(data, extension)
 
     original_sys_path = sys.path.copy()
     sys.path.insert(0, str(source_tree))
     try:
-        from core.images import convert_image  # type: ignore[import-not-found]
         from core.mesh_converter.formats import gltf  # type: ignore[import-not-found]
         from core.mesh_loader import MeshLoader  # type: ignore[import-not-found]
         from core.mesh_loader.types import Bones  # type: ignore[import-not-found]
         from core.npk.npkhash_v1 import mesh_hash  # type: ignore[import-not-found]
-        return convert_image, gltf, MeshLoader, Bones, mesh_hash
+        return lazy_convert_image, gltf, MeshLoader, Bones, mesh_hash
     finally:
         # Importing an upstream package may add more entries than the one we
         # supplied, so restore the complete caller state.
@@ -80,12 +100,21 @@ def runtime_dependency_report() -> dict[str, dict[str, Any]]:
             "distribution": distribution_name,
             "available": available,
             "version": version,
+            "required": module_name in BASE_RUNTIME_DEPENDENCIES,
         }
     return report
 
 
-def missing_runtime_dependencies(report: dict[str, dict[str, Any]]) -> list[str]:
-    return sorted(name for name, row in report.items() if not row.get("available"))
+def missing_runtime_dependencies(
+    report: dict[str, dict[str, Any]],
+    required: Iterable[str] | None = None,
+) -> list[str]:
+    required_names = set(required) if required is not None else set(report)
+    return sorted(
+        name
+        for name, row in report.items()
+        if name in required_names and not row.get("available")
+    )
 
 
 def publication_status(outputs: list[dict[str, Any]]) -> str:
@@ -115,10 +144,16 @@ def maybe_delegate_runtime(
         raise PublicationError(f"runtime Python is unavailable: {runtime}")
     if runtime == Path(sys.executable).resolve():
         return None
-    completed = subprocess.run(
-        [str(runtime), str(Path(__file__).resolve()), *raw_argv, "--_runtime-active"],
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            [str(runtime), str(Path(__file__).resolve()), *raw_argv, "--_runtime-active"],
+            check=False,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise PublicationError(
+            f"delegated runtime timed out after {SUBPROCESS_TIMEOUT_SECONDS} seconds"
+        ) from exc
     return completed.returncode
 
 
@@ -406,6 +441,18 @@ def split_primitives_and_attach_materials(
 def validate_gltf(document: dict[str, Any], parts: list[tuple[int, int, int, int]]) -> dict[str, Any]:
     from PIL import Image
 
+    general_validator = "not-installed"
+    try:
+        from trimesh.exchange import gltf as trimesh_gltf  # type: ignore[import-not-found]
+    except ImportError:
+        pass
+    else:
+        try:
+            trimesh_gltf.validate(document)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PublicationError(f"general glTF validation failed: {exc}") from exc
+        general_validator = "trimesh.exchange.gltf.validate"
+
     encoded = json.dumps(document, ensure_ascii=False, allow_nan=False)
     if not encoded:
         raise PublicationError("empty glTF")
@@ -456,6 +503,7 @@ def validate_gltf(document: dict[str, Any], parts: list[tuple[int, int, int, int
         with Image.open(BytesIO(payload)) as check:
             check.verify()
     return {
+        "general_gltf_validator": general_validator,
         "json_finite": True,
         "accessor_bounds": True,
         "index_bounds": True,
@@ -988,7 +1036,10 @@ def _runtime_context(args: argparse.Namespace) -> tuple[Path, list[Path], Path, 
     if not source_tree.is_dir():
         raise PublicationError(f"NeoXtractor source tree missing: {source_tree}")
     dependency_report = runtime_dependency_report()
-    missing_dependencies = missing_runtime_dependencies(dependency_report)
+    missing_dependencies = missing_runtime_dependencies(
+        dependency_report,
+        required=BASE_RUNTIME_DEPENDENCIES,
+    )
     if missing_dependencies:
         raise PublicationError(
             "runtime dependency preflight missing " + ", ".join(missing_dependencies)

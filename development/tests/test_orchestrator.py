@@ -14,7 +14,14 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 
-from asset_extractor.orchestrator import PipelineError, run_pipeline  # noqa: E402
+from asset_extractor.classification import classify_manifest_entries  # noqa: E402
+from asset_extractor.orchestrator import (  # noqa: E402
+    PipelineError,
+    _extract_sources,
+    _run_python,
+    _run_visual_stage,
+    run_pipeline,
+)
 from asset_extractor.orchestrator import _source_paths  # noqa: E402
 from asset_extractor.schema import validate_document  # noqa: E402
 from asset_extractor.common import sha256_file  # noqa: E402
@@ -99,6 +106,110 @@ class OrchestratorTests(unittest.TestCase):
             output.mkdir()
             with self.assertRaises(PipelineError):
                 run_pipeline(config, output)
+
+    def test_pipeline_rejects_unknown_configuration_keys_before_creating_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = root / "pipeline.json"
+            config.write_text(json.dumps({"sorces": ["input.zip"]}), encoding="utf-8")
+            output = root / "run"
+            with self.assertRaises(PipelineError):
+                run_pipeline(config, output)
+            self.assertFalse(output.exists())
+
+    def test_pipeline_subprocesses_have_a_bounded_timeout(self) -> None:
+        with patch(
+            "asset_extractor.orchestrator.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["python"], 900),
+        ):
+            with self.assertRaises(PipelineError):
+                _run_python(Path("stage.py"), [])
+
+    def test_visual_stage_keeps_low_confidence_scores_partial(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            reference = root / "reference.png"
+            candidate = root / "candidate.png"
+            reference.write_bytes(ONE_PIXEL_PNG)
+            candidate.write_bytes(ONE_PIXEL_PNG)
+            low_confidence = {
+                "status": "scored",
+                "score": 1.0,
+                "accepted": False,
+                "confidence": "low",
+            }
+            with patch(
+                "asset_extractor.orchestrator.compare_images",
+                return_value=low_confidence,
+            ):
+                result = _run_visual_stage([str(reference)], root, [candidate])
+        self.assertEqual(result["status"], "partial")
+        self.assertIsNone(result["results"][0]["accepted"])
+
+    def test_dedicated_backend_collection_is_classifiable_with_its_output_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sources = [root / "first.npk", root / "second.npk"]
+            for source in sources:
+                source.write_bytes(b"NXPK" + source.name.encode("ascii"))
+            extraction_root = root / "run" / "extraction"
+
+            def fake_extract(request, _registry=None):
+                request.output.mkdir(parents=True, exist_ok=True)
+                payload = request.output / "raw" / "asset.png"
+                payload.parent.mkdir(parents=True, exist_ok=True)
+                payload.write_bytes(ONE_PIXEL_PNG)
+                source_sha = sha256_file(request.source_paths[0])
+                manifest = {
+                    "schema_version": 1,
+                    "operation": "extract-netease-backend",
+                    "status": "complete",
+                    "source": {
+                        "sha256_before": source_sha,
+                        "sha256_after": source_sha,
+                        "unchanged": True,
+                    },
+                    "entries": [{
+                        "entry_index": 0,
+                        "payload_id": 7,
+                        "payload_offset": 64,
+                        "output_path": "raw/asset.png",
+                        "output_sha256": sha256_file(payload),
+                        "bytes": payload.stat().st_size,
+                        "status": "extracted",
+                        "logical_path": "model/s3_hairen/s3_hairen.png",
+                    }],
+                    "failures": [],
+                }
+                (request.output / "backend-run-manifest.json").write_text(
+                    json.dumps(manifest), encoding="utf-8"
+                )
+                return manifest
+
+            config = {"backend": "neoxtractor", "profile": "auto"}
+            with patch("asset_extractor.orchestrator.extract_with_backend", side_effect=fake_extract):
+                extraction = _extract_sources(config, root, sources, extraction_root)
+
+            self.assertEqual(extraction["operation"], "extract-backend-collection")
+            self.assertTrue((extraction_root / "backend-runs-manifest.json").is_file())
+            self.assertEqual(extraction["entries"][0]["source_input_index"], 0)
+            self.assertEqual(
+                validate_document(
+                    extraction,
+                    "backend-runs-manifest",
+                    PROJECT_ROOT / "development" / "schemas",
+                ),
+                [],
+            )
+            classified = classify_manifest_entries(
+                run_root=root / "run",
+                source_manifest=extraction,
+                output_manifest=root / "run" / "type-classification.json",
+                raw_manifest=root / "run" / "raw-extraction-manifest.json",
+                source_output_root=extraction_root,
+            )
+            self.assertEqual(classified["status"], "complete")
+            self.assertEqual(classified["counts"]["image"], 2)
 
 
 if __name__ == "__main__":

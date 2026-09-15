@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/asset-extractor/backend-runs-manifest.schema.json",
+  "title": "Dedicated backend collection manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "created_at", "status", "tool", "backend",
+    "source_count", "sources", "output_directory", "entries", "failures", "claims"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "operation": {"const": "extract-backend-collection"},
+    "created_at": {"type": "string", "minLength": 1},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "tool": {"$ref": "#/$defs/tool"},
+    "backend": {"enum": ["auto", "neoxtractor", "neox-tools", "builtin"]},
+    "source_count": {"type": "integer", "minimum": 1},
+    "sources": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/source"},
+      "minItems": 1
+    },
+    "output_directory": {"type": "string", "minLength": 1},
+    "entries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entry"}
+    },
+    "failures": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/failure"}
+    },
+    "claims": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/claim"}
+    }
+  },
+  "$defs": {
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source", "manifest", "sha256_before", "sha256_after", "unchanged", "status"
+      ],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "manifest": {"type": "string", "minLength": 1},
+        "sha256_before": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "sha256_after": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "unchanged": {"type": ["boolean", "null"]},
+        "status": {"enum": ["complete", "partial", "failed"]}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": ["output_path", "bytes", "output_sha256", "status"],
+      "properties": {
+        "output_path": {"type": "string", "minLength": 1},
+        "bytes": {"type": "integer", "minimum": 0},
+        "output_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "status": {"const": "extracted"}
+      },
+      "additionalProperties": true
+    },
+    "failure": {
+      "type": "object",
+      "required": ["stage", "error"],
+      "properties": {
+        "stage": {"type": "string", "minLength": 1},
+        "error": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "certainty"],
+      "properties": {
+        "claim": {"type": "string", "minLength": 1},
+        "certainty": {"enum": ["fact", "strong_inference", "unknown"]}
+      }
+    }
+  }
+}

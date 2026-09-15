@@ -38,6 +38,9 @@ class AcquisitionError(RuntimeError):
     """An acquisition precondition or integrity check failed."""
 
 
+ADB_TIMEOUT_SECONDS = 30 * 60
+
+
 def resolve_adb(raw: str) -> Path:
     candidate = Path(raw).expanduser()
     resolved = candidate.resolve() if candidate.exists() else None
@@ -63,6 +66,7 @@ def run_adb(
         text=text,
         encoding="utf-8" if text else None,
         errors="strict" if text else None,
+        timeout=ADB_TIMEOUT_SECONDS,
     )
 
 
@@ -462,7 +466,7 @@ def snapshot(
         properties = device_properties(adb, serial)
         adb_version = subprocess.run(
             [str(adb), "version"], check=True, capture_output=True, text=True,
-            encoding="utf-8", errors="strict",
+            encoding="utf-8", errors="strict", timeout=ADB_TIMEOUT_SECONDS,
         ).stdout.splitlines()[0]
 
         for root_name, remote_root in remote_roots:
@@ -494,7 +498,7 @@ def snapshot(
                 max_total_bytes=max_total_bytes,
             )
 
-    except (OSError, subprocess.CalledProcessError, AcquisitionError) as exc:
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired, AcquisitionError) as exc:
         failures.append({"stage": "setup-or-inventory", "source": serial, "error": str(exc)})
 
     manifest = _build_snapshot_manifest(

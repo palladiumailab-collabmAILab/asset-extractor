@@ -28,6 +28,7 @@ BACKENDS = ("auto", "builtin", "neoxtractor", "neox-tools")
 DEFAULT_NEOX_ROOT = PROGRAMS_ROOT / "vendor" / "resource-onmyoji" / "NeoXtractor-source-v3.2"
 DEFAULT_NEOX_CONFIG = DEFAULT_NEOX_ROOT / "configs" / "omy_omrc.json"
 DEFAULT_NEOX_PYTHON = DEFAULT_NEOX_ROOT.parent / "neoxtractor-venv" / "Scripts" / "python.exe"
+BACKEND_RUNTIME_TIMEOUT_SECONDS = 30 * 60
 
 
 def _checkout(raw: Path | None, environment_name: str, default: Path) -> Path | None:
@@ -335,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
                 completed = subprocess.run(
                     [str(runtime), str(Path(__file__).resolve()), *raw_argv, "--_backend-runtime-active"],
                     check=False,
+                    timeout=BACKEND_RUNTIME_TIMEOUT_SECONDS,
                 )
                 return completed.returncode
         config = (args.neoxtractor_config or DEFAULT_NEOX_CONFIG).expanduser().resolve()
@@ -347,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
             neox_config=config,
             neox_tools_root=neox_tools_root,
         )
-    except (OSError, ExtractionError, RuntimeError) as exc:
+    except (OSError, ExtractionError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print(f"backend extraction failed: {exc}", file=sys.stderr)
         return 2
     print(json.dumps({"status": manifest["status"], "output": str(args.output.resolve())}, ensure_ascii=False))

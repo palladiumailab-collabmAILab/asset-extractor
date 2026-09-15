@@ -10,9 +10,10 @@ from typing import Any, Iterable
 
 from .backends import BackendRequest, extract_with_backend
 from .classification import classify_manifest_entries
-from .common import atomic_write_json, config_hash, sha256_file, tool_metadata, utc_now
+from .common import atomic_write_json, sha256_file, tool_metadata, utc_now
 from .errors import ExtractionError
 from .matcher import build_match_manifest
+from .schema import SchemaContractError, validate_document
 from .visual import compare_images
 
 
@@ -27,25 +28,53 @@ def _path(value: Any, base: Path, field: str) -> Path:
     return (base / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
 
 
-def _load_config(path: Path) -> dict[str, Any]:
+def _load_json_object(path: Path, label: str) -> dict[str, Any]:
     try:
         document = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise PipelineError(f"cannot read pipeline config {path}: {exc}") from exc
+        raise PipelineError(f"cannot read {label} {path}: {exc}") from exc
     if not isinstance(document, dict):
-        raise PipelineError("pipeline config must be a JSON object")
+        raise PipelineError(f"{label} must be a JSON object")
+    return document
+
+
+def _load_config(path: Path) -> dict[str, Any]:
+    document = _load_json_object(path, "pipeline config")
+    try:
+        errors = validate_document(document, "pipeline-config")
+    except SchemaContractError:
+        # A packaged/minimal runtime may not ship jsonschema or the repository
+        # schemas. Preserve a useful structural guard in that environment.
+        errors = []
+        allowed = {
+            "sources", "acquisition", "dictionary", "backend", "game_profile", "profile",
+            "best_effort", "neoxtractor_root", "neoxtractor_config", "neox_tools_root",
+            "backend_python", "textured", "references",
+        }
+        unexpected = sorted(set(document) - allowed)
+        if unexpected:
+            errors.append(f"pipeline-config has unexpected keys: {', '.join(unexpected)}")
+        if (document.get("sources") is None) == (document.get("acquisition") is None):
+            errors.append("pipeline-config requires exactly one of sources or acquisition")
+    if errors:
+        raise PipelineError("invalid pipeline config: " + "; ".join(errors))
     return document
 
 
 def _run_python(script: Path, arguments: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [str(Path(sys.executable).resolve()), str(script.resolve()), *arguments],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    command = [str(Path(sys.executable).resolve()), str(script.resolve()), *arguments]
+    try:
+        return subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15 * 60,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise PipelineError(f"pipeline subprocess timed out after 900 seconds: {script}") from exc
 
 
 def _result(status: str, manifest: Path | None = None, **fields: Any) -> dict[str, Any]:
@@ -63,11 +92,11 @@ def _source_paths(config: dict[str, Any], config_dir: Path, run_root: Path) -> t
     if sources is not None:
         if not isinstance(sources, list) or not sources:
             raise PipelineError("sources must be a non-empty array")
-        resolved = [_path(value, config_dir, "sources[]") for value in sources]
-        missing = [str(path) for path in resolved if not path.is_file()]
+        source_paths = [_path(value, config_dir, "sources[]") for value in sources]
+        missing = [str(path) for path in source_paths if not path.is_file()]
         if missing:
             raise PipelineError(f"source file is missing: {missing[0]}")
-        return resolved, _result("complete", source_count=len(resolved), method="configured-sources")
+        return source_paths, _result("complete", source_count=len(source_paths), method="configured-sources")
     if not isinstance(acquisition, dict):
         raise PipelineError("configure sources or acquisition")
 
@@ -102,7 +131,7 @@ def _source_paths(config: dict[str, Any], config_dir: Path, run_root: Path) -> t
         raise PipelineError(
             f"BlueStacks acquisition produced no manifest: {completed.stderr.strip() or completed.stdout.strip()}"
         )
-    document = _load_config(manifest)
+    document = _load_json_object(manifest, "BlueStacks snapshot manifest")
     if document.get("status") != "complete":
         raise PipelineError("BlueStacks acquisition is incomplete; extraction was not started")
     files = document.get("files")
@@ -125,20 +154,20 @@ def _source_paths(config: dict[str, Any], config_dir: Path, run_root: Path) -> t
             if current.is_symlink():
                 raise PipelineError(f"BlueStacks acquisition path contains a symlink: {raw_local_path}")
             current = current.parent
-        resolved = candidate.resolve()
+        resolved_path = candidate.resolve()
         try:
-            resolved.relative_to(acquisition_root)
+            resolved_path.relative_to(acquisition_root)
         except ValueError as exc:
             raise PipelineError(f"BlueStacks acquisition path escapes snapshot root: {raw_local_path}") from exc
-        if not resolved.is_file() or resolved.is_symlink():
-            raise PipelineError(f"BlueStacks acquisition file is missing or unsafe: {resolved}")
+        if not resolved_path.is_file() or resolved_path.is_symlink():
+            raise PipelineError(f"BlueStacks acquisition file is missing or unsafe: {resolved_path}")
         expected_bytes = row.get("bytes")
         expected_sha256 = row.get("sha256")
-        actual_bytes = resolved.stat().st_size
-        actual_sha256 = sha256_file(resolved)
+        actual_bytes = resolved_path.stat().st_size
+        actual_sha256 = sha256_file(resolved_path)
         if actual_bytes != expected_bytes or actual_sha256 != expected_sha256:
-            raise PipelineError(f"BlueStacks acquisition file changed after capture: {resolved}")
-        paths.append(resolved)
+            raise PipelineError(f"BlueStacks acquisition file changed after capture: {resolved_path}")
+        paths.append(resolved_path)
     return paths, _result(
         "complete" if completed.returncode == 0 else "partial",
         manifest,
@@ -178,14 +207,18 @@ def _build_assets_manifest(classification: dict[str, Any], output: Path) -> dict
     return document
 
 
-def _write_publication_inputs(run_root: Path, extraction: dict[str, Any]) -> None:
+def _write_publication_inputs(
+    run_root: Path,
+    extraction: dict[str, Any],
+    source_manifest: Path,
+) -> None:
     """Bridge the normalized extraction manifest into the existing NeoX stage."""
 
     raw_manifest = {
         "schema_version": 1,
         "stage": "raw-extraction",
         "status": extraction.get("status"),
-        "source_manifest": str((run_root / "extraction" / "run-manifest.json").resolve()),
+        "source_manifest": str(source_manifest.resolve()),
         "entry_count": len(extraction.get("entries", [])),
         "outputs": extraction.get("entries", []),
         "raw_outputs_immutable": True,
@@ -202,11 +235,11 @@ def _write_publication_inputs(run_root: Path, extraction: dict[str, Any]) -> Non
     )
 
 
-def _request_for_source(
-    config: dict[str, Any], config_dir: Path, source: Path, output: Path
+def _request_for_sources(
+    config: dict[str, Any], config_dir: Path, sources: Iterable[Path], output: Path
 ) -> BackendRequest:
     return BackendRequest(
-        source_paths=(source,),
+        source_paths=tuple(sources),
         output=output,
         backend=str(config.get("backend", "builtin")),
         game_profile=str(config.get("game_profile", "onmyoji")),
@@ -219,10 +252,17 @@ def _request_for_source(
     )
 
 
+def _request_for_source(
+    config: dict[str, Any], config_dir: Path, source: Path, output: Path
+) -> BackendRequest:
+    return _request_for_sources(config, config_dir, (source,), output)
+
+
 def _rebase_entries(
     manifest: dict[str, Any],
     source_run: Path,
     combined_root: Path,
+    source_input_index: int,
 ) -> list[dict[str, Any]]:
     outputs = manifest.get("outputs")
     declared_root = outputs.get("directory") if isinstance(outputs, dict) else None
@@ -231,6 +271,8 @@ def _rebase_entries(
     for raw in manifest.get("entries", []):
         if not isinstance(raw, dict):
             continue
+        if not raw.get("output_path") or raw.get("status") in {"failed", "error"}:
+            continue
         entry = dict(raw)
         output_path = Path(str(entry.get("output_path", "")))
         actual = (old_root / output_path).resolve()
@@ -238,6 +280,7 @@ def _rebase_entries(
             entry["output_path"] = actual.relative_to(combined_root.resolve()).as_posix()
         except ValueError as exc:
             raise PipelineError(f"backend output escaped combined extraction root: {actual}") from exc
+        entry["source_input_index"] = source_input_index
         rebased.append(entry)
     return rebased
 
@@ -249,53 +292,48 @@ def _extract_sources(
 
     backend = str(config.get("backend", "builtin"))
     if backend == "builtin" or len(sources) == 1:
-        return extract_with_backend(_request_for_source(config, config_dir, sources[0], output), None) if len(sources) == 1 else extract_with_backend(
-            BackendRequest(
-                source_paths=tuple(sources),
-                output=output,
-                backend=backend,
-                game_profile=str(config.get("game_profile", "onmyoji")),
-                profile=str(config.get("profile", "auto")),
-                strict=not bool(config.get("best_effort", False)),
-                neoxtractor_root=_path(config["neoxtractor_root"], config_dir, "neoxtractor_root") if config.get("neoxtractor_root") else None,
-                neoxtractor_config=_path(config["neoxtractor_config"], config_dir, "neoxtractor_config") if config.get("neoxtractor_config") else None,
-                neox_tools_root=_path(config["neox_tools_root"], config_dir, "neox_tools_root") if config.get("neox_tools_root") else None,
-                backend_python=_path(config["backend_python"], config_dir, "backend_python") if config.get("backend_python") else None,
-            ),
-            None,
-        )
+        return extract_with_backend(_request_for_sources(config, config_dir, sources, output), None)
 
     combined_entries: list[dict[str, Any]] = []
-    combined_inputs: list[dict[str, Any]] = []
+    source_runs: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
     for index, source in enumerate(sources):
         source_run = output / f"source-{index:04d}"
         manifest = extract_with_backend(_request_for_source(config, config_dir, source, source_run), None)
-        combined_entries.extend(_rebase_entries(manifest, source_run, output))
-        combined_inputs.extend(manifest.get("inputs", []))
+        combined_entries.extend(_rebase_entries(manifest, source_run, output, index))
+        source_info = manifest.get("source")
+        manifest_name = (
+            "backend-run-manifest.json"
+            if (source_run / "backend-run-manifest.json").is_file()
+            else "run-manifest.json"
+        )
+        source_runs.append(
+            {
+                "source": str(source.resolve()),
+                "manifest": str((source_run / manifest_name).resolve()),
+                "sha256_before": source_info.get("sha256_before") if isinstance(source_info, dict) else None,
+                "sha256_after": source_info.get("sha256_after") if isinstance(source_info, dict) else None,
+                "unchanged": source_info.get("unchanged") if isinstance(source_info, dict) else None,
+                "status": manifest.get("status"),
+            }
+        )
         failures.extend(manifest.get("failures", []))
     status = "complete" if combined_entries and not failures else "partial" if combined_entries else "failed"
     combined = {
-        "schema_version": 2,
-        "operation": "extract",
+        "schema_version": 1,
+        "operation": "extract-backend-collection",
         "created_at": utc_now(),
         "status": status,
         "tool": tool_metadata(),
-        "profile": str(config.get("profile", "auto")),
-        "strict": not bool(config.get("best_effort", False)),
-        "resume": False,
-        "limits": {},
-        "normalized_config": {"backend": backend, "source_count": len(sources)},
-        "config_sha256": config_hash({"backend": backend, "source_count": len(sources)}),
-        "resume_key": None,
-        "source_unchanged": all(row.get("source", {}).get("unchanged", True) for row in combined_inputs),
-        "inputs": combined_inputs,
-        "outputs": {"directory": str(output), "files": [], "count": 0, "committed": True},
+        "backend": backend,
+        "source_count": len(source_runs),
+        "sources": source_runs,
+        "output_directory": str(output.resolve()),
         "entries": combined_entries,
         "failures": failures,
         "claims": [{"claim": "dedicated backend outputs were rebased into one pipeline run", "certainty": "fact"}],
     }
-    atomic_write_json(output / "run-manifest.json", combined)
+    atomic_write_json(output / "backend-runs-manifest.json", combined)
     return combined
 
 
@@ -334,6 +372,11 @@ def _run_render_stage(run_root: Path, textured: dict[str, Any]) -> tuple[dict[st
         if not isinstance(model, dict) or model.get("status") != "converted":
             continue
         source = Path(str(model.get("output", ""))).resolve()
+        try:
+            source.relative_to(run_root.resolve())
+        except ValueError:
+            failures.append(f"model escaped pipeline run root: {source}")
+            continue
         if not source.is_file():
             failures.append(f"missing model: {source}")
             continue
@@ -372,9 +415,32 @@ def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -
             raise PipelineError(f"reference image is missing: {reference}")
         comparisons = [compare_images(reference, candidate) for candidate in selected_candidates if candidate.is_file()]
         scored = [item for item in comparisons if item.get("status") == "scored"]
-        best = max(scored, key=lambda item: float(item.get("score", 0.0)), default=None)
-        results.append({"reference": str(reference.resolve()), "comparisons": comparisons, "best": best})
-    status = "complete" if results and all(item["best"] is not None for item in results) else "partial"
+        ranked = sorted(scored, key=lambda item: float(item.get("score", 0.0)), reverse=True)
+        best = ranked[0] if ranked else None
+        second = ranked[1] if len(ranked) > 1 else None
+        margin = (
+            round(float(best["score"]) - float(second["score"]), 6)
+            if best is not None and second is not None
+            else None
+        )
+        accepted_ranked = [item for item in ranked if item.get("accepted") is True]
+        decision = (
+            accepted_ranked[0]
+            if accepted_ranked
+            and best is accepted_ranked[0]
+            and (second is None or (margin is not None and margin >= 0.05))
+            else None
+        )
+        results.append(
+            {
+                "reference": str(reference.resolve()),
+                "comparisons": comparisons,
+                "best": best,
+                "accepted": decision,
+                "margin": margin,
+            }
+        )
+    status = "complete" if results and all(item["accepted"] is not None for item in results) else "partial"
     return _result(status, count=len(results), results=results, policy="ranking evidence; never rewrites UV/material bindings")
 
 
@@ -391,16 +457,26 @@ def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
         sources, acquisition = _source_paths(config, config_dir, output)
         stages["acquisition"] = acquisition
         extraction = _extract_sources(config, config_dir, sources, output / "extraction")
-        extraction_manifest = output / "extraction" / (
-            "run-manifest.json" if (output / "extraction" / "run-manifest.json").is_file() else "backend-run-manifest.json"
+        extraction_manifest = next(
+            (
+                output / "extraction" / filename
+                for filename in (
+                    "run-manifest.json",
+                    "backend-run-manifest.json",
+                    "backend-runs-manifest.json",
+                )
+                if (output / "extraction" / filename).is_file()
+            ),
+            output / "extraction" / "run-manifest.json",
         )
         stages["extraction"] = _result(str(extraction.get("status", "failed")), extraction_manifest, entries=len(extraction.get("entries", [])))
-        _write_publication_inputs(output, extraction)
+        _write_publication_inputs(output, extraction, extraction_manifest)
         classification = classify_manifest_entries(
             run_root=output,
             source_manifest=extraction,
             output_manifest=output / "type-classification.json",
             raw_manifest=output / "raw-extraction-manifest.json",
+            source_output_root=output / "extraction",
         )
         stages["classification"] = _result(str(classification.get("status", "failed")), output / "type-classification.json", counts=classification.get("counts", {}))
         _build_assets_manifest(classification, output / "assets.json")

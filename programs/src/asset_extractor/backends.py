@@ -81,6 +81,7 @@ class DedicatedBackend:
     """Process-isolated adapter for the NetEase/NeoX wrapper."""
 
     name = "netease-wrapper"
+    timeout_seconds = 30 * 60
 
     def __init__(self, script_path: Path | None = None) -> None:
         self.script_path = (script_path or Path(__file__).resolve().parents[2] / "run_netease_backend.py").resolve()
@@ -125,6 +126,7 @@ class DedicatedBackend:
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=self.timeout_seconds,
         )
         for filename in ("backend-run-manifest.json", "run-manifest.json"):
             manifest_path = request.output / filename

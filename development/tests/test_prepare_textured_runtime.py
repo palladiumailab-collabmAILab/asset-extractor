@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import base64
 import json
 import sys
 import tempfile
@@ -42,6 +43,27 @@ class PrepareTexturedRuntimeTests(unittest.TestCase):
             MODULE.missing_runtime_dependencies(report),
             ["numpy", "texture2ddecoder"],
         )
+        self.assertEqual(
+            MODULE.missing_runtime_dependencies(report, required={"PIL", "numpy"}),
+            ["numpy"],
+        )
+
+    def test_common_image_formats_do_not_load_optional_decoder(self) -> None:
+        payload = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "texture.png"
+            source.write_bytes(payload)
+
+            def unexpected_decoder_call(_data: bytes, _extension: str) -> None:
+                raise AssertionError("optional decoder was called for PNG")
+
+            converted, width, height, _alpha_used = MODULE.png_from_source(
+                source, unexpected_decoder_call
+            )
+        self.assertEqual((width, height), (1, 1))
+        self.assertTrue(converted.startswith(b"\x89PNG"))
 
     def test_runtime_delegation_reexecutes_the_same_python_script(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

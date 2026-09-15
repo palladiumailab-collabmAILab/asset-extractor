@@ -41,6 +41,7 @@ def classify_manifest_entries(
     source_manifest: dict[str, Any],
     output_manifest: Path,
     raw_manifest: Path,
+    source_output_root: Path | None = None,
 ) -> dict[str, Any]:
     """Create the classification contract consumed by texture publication.
 
@@ -55,7 +56,7 @@ def classify_manifest_entries(
     output_root = (
         Path(str(declared_output_root)).resolve()
         if declared_output_root
-        else run_root.resolve()
+        else (source_output_root or run_root).resolve()
     )
     entries = source_manifest.get("entries", [])
     if not output_root.is_dir() or not isinstance(entries, list):
@@ -74,13 +75,15 @@ def classify_manifest_entries(
             raise ValueError(f"extracted output is missing or unsafe: {path}")
         actual_bytes = path.stat().st_size
         actual_sha = sha256_file(path)
-        if actual_bytes != entry.get("bytes") or actual_sha != entry.get("sha256"):
+        declared_bytes = entry.get("bytes", entry.get("actual_size"))
+        declared_sha = entry.get("sha256", entry.get("output_sha256"))
+        if actual_bytes != declared_bytes or actual_sha != declared_sha:
             raise ValueError(f"extracted output changed after extraction: {path}")
         category, evidence, extension = classify_file(path)
         counts[category] = counts.get(category, 0) + 1
         classified.append(
             {
-                "ordinal": entry.get("index", entry.get("entry_index")),
+                "ordinal": entry.get("index", entry.get("entry_index", entry.get("ordinal"))),
                 "payload_id": entry.get("payload_id"),
                 "asset_id": entry.get("asset_id"),
                 "offset": entry.get("offset", entry.get("payload_offset")),
@@ -88,7 +91,7 @@ def classify_manifest_entries(
                 "declared_unpacked_bytes": entry.get("declared_unpacked_bytes"),
                 "path": str(path),
                 "relative_path": str(path.relative_to(run_root.resolve())),
-                "logical_path": entry.get("logical_path"),
+                "logical_path": entry.get("logical_path") or entry.get("path"),
                 "logical_path_status": entry.get("logical_path_status"),
                 "bytes": actual_bytes,
                 "sha256": actual_sha,
