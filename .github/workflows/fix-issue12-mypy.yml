@@ -1,0 +1,47 @@
+name: Apply Issue 12 mypy follow-up
+
+on:
+  push:
+    branches:
+      - codex/issue-12-correctness
+    paths:
+      - .github/workflows/fix-issue12-mypy.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: codex/issue-12-correctness
+          fetch-depth: 0
+      - name: Add explicit StageStatus annotations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('programs/src/asset_extractor/orchestrator.py')
+          text = path.read_text(encoding='utf-8')
+          old_render = '    status = "complete" if rendered and not failures else "partial" if rendered else "failed"\n'
+          new_render = '    status: StageStatus = (\n        "complete" if rendered and not failures else "partial" if rendered else "failed"\n    )\n'
+          old_visual = '    status = (\n        "complete"\n        if results and all(item["accepted"] is not None for item in results)\n        else "partial"\n    )\n'
+          new_visual = '    status: StageStatus = (\n        "complete"\n        if results and all(item["accepted"] is not None for item in results)\n        else "partial"\n    )\n'
+          if text.count(old_render) != 1 or text.count(old_visual) != 1:
+              raise SystemExit('unexpected status assignment shape')
+          text = text.replace(old_render, new_render, 1).replace(old_visual, new_visual, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          python -m pip install --disable-pip-version-check -q ruff==0.8.4 mypy==1.14.1
+          ruff format programs/src/asset_extractor/orchestrator.py
+          mypy programs/src/asset_extractor/orchestrator.py
+          git diff --check
+      - name: Commit fix and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-issue12-mypy.yml
+          git add programs/src/asset_extractor/orchestrator.py
+          git commit -m "fix: type pipeline stage statuses explicitly"
+          git push origin HEAD:codex/issue-12-correctness
