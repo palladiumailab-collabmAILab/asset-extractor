@@ -21,9 +21,11 @@ Use this skill only for an explicit GitHub operation. Do not invoke it for routi
 2. Before changing a local checkout, run `git status --short --branch`, inspect the relevant diff, and preserve unrelated user changes. Do not reset, clean, or overwrite to make synchronization easier.
 3. Verify the exact remote repository with repository metadata. Check `visibility`, `default_branch`, and permissions when available. An empty repository search result is not proof that the repository does not exist.
 4. Prefer a `codex/...` branch for updates unless the user explicitly requests a direct update to the default branch. Do not force-push by default.
-5. Run the proportionate project checks before committing. Let the repository's existing hooks and CI enforce project-specific validation.
+5. Run the proportionate local or Docker project checks before committing. Treat them as preflight, not as a substitute for GitHub Actions.
 6. Commit the intended files, push with `git push -u origin <branch>`, and verify the remote ref with `git ls-remote --heads origin <branch>` or an equivalent connector read.
-7. Report the canonical repository URL, branch, commit, visibility, and verification result. Do not report credentials or secret-bearing command output.
+7. When the repository has GitHub Actions, verify the workflow result for the pushed commit or pull request. For projects governed by the harness baseline, expected CI includes the project's applicable lint / format, tests, type checks, build, and other canonical validators. Do not report remote verification as successful while expected checks are missing, pending, skipped unexpectedly, or failing.
+8. If expected CI is absent, treat that as a project-quality gap. Add or repair the workflow when it is within the requested scope; otherwise report the missing gate explicitly. If CI fails, inspect the failure and fix the implementation or configuration rather than weakening tests, thresholds, or required checks merely to obtain green status.
+9. Report the canonical repository URL, branch, commit, visibility, local verification, and GitHub Actions result. Do not report credentials or secret-bearing command output.
 
 ## Recovery rules
 
