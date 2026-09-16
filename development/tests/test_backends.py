@@ -8,7 +8,6 @@ from subprocess import CompletedProcess, TimeoutExpired
 from unittest.mock import patch
 
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 from asset_extractor.backends import (  # noqa: E402
