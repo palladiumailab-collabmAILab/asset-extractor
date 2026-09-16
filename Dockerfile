@@ -14,5 +14,6 @@ COPY requirements-dev.txt requirements-vision.txt ./
 RUN python -m pip install --root-user-action=ignore --disable-pip-version-check --no-cache-dir -r requirements-vision.txt
 
 COPY . .
+RUN python -m pip install --root-user-action=ignore --disable-pip-version-check --no-deps .
 
-CMD ["sh", "-c", "python scripts/validate-skills.py skills && coverage run --branch -m unittest discover -s development/tests -t . && coverage report --omit='*/config.py,*/config-*.py' --fail-under=55 && ruff check programs scripts development/tests && ruff format --check programs scripts development/tests && mypy && python scripts/validate-schemas.py --manifest visual-reference-evidence=development/config/character-asset-evidence-20260914.json --manifest visual-reference-evidence=development/config/kainin-asset-variants-20260914.json"]
+CMD ["sh", "-c", "python -c \"import importlib.metadata as m; import asset_extractor; assert m.version('asset-extractor') == asset_extractor.__version__\" && asset-extractor --help >/dev/null && python scripts/validate-skills.py skills && coverage run --branch -m unittest discover -s development/tests -t . && coverage report --omit='*/config.py,*/config-*.py' --fail-under=55 && ruff check programs scripts development/tests && ruff format --check programs scripts development/tests && mypy && python scripts/validate-schemas.py --manifest visual-reference-evidence=development/config/character-asset-evidence-20260914.json --manifest visual-reference-evidence=development/config/kainin-asset-variants-20260914.json"]
