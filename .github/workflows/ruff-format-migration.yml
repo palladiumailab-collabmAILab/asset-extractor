@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - chore/ruff-format-baseline
+  pull_request:
+    branches:
+      - codex/asset-extraction-automation
 
 permissions:
   contents: write
@@ -12,7 +15,7 @@ jobs:
   format:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
+      - name: Check out formatting branch
         uses: actions/checkout@v6
         with:
           ref: chore/ruff-format-baseline
