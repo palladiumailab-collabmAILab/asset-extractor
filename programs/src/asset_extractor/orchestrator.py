@@ -515,7 +515,9 @@ def _run_render_stage(run_root: Path, textured: StageResult) -> tuple[StageResul
             rendered.append(target)
         else:
             failures.append(completed.stderr.strip() or f"renderer failed: {source}")
-    status = "complete" if rendered and not failures else "partial" if rendered else "failed"
+    status: StageStatus = (
+        "complete" if rendered and not failures else "partial" if rendered else "failed"
+    )
     return _result(
         status, output=str(render_root.resolve()), rendered=len(rendered), failures=failures
     ), rendered
@@ -578,7 +580,7 @@ def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -
                 "margin": margin,
             }
         )
-    status = (
+    status: StageStatus = (
         "complete"
         if results and all(item["accepted"] is not None for item in results)
         else "partial"
