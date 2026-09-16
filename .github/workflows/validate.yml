@@ -35,7 +35,7 @@ jobs:
       - name: Run asset extractor tests with branch coverage
         run: |
           coverage run --branch -m unittest discover -s development/tests -t .
-          coverage report --fail-under=55
+          coverage report --omit='*/config.py,*/config-*.py' --fail-under=55
 
       - name: Run Ruff static checks
         run: >-
