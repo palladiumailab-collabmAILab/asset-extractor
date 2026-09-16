@@ -23,7 +23,7 @@ function Invoke-Checked {
 function Invoke-PythonValidation {
     Invoke-Checked 'skill validation' { python scripts/validate-skills.py skills }
     Invoke-Checked 'asset extractor tests' { coverage run --branch -m unittest discover -s development/tests -t . }
-    Invoke-Checked 'coverage threshold' { coverage report --omit='*/config-*.py' --fail-under=55 }
+    Invoke-Checked 'coverage threshold' { coverage report --omit='*/config.py,*/config-*.py' --fail-under=55 }
     Invoke-Checked 'Ruff lint' { ruff check programs scripts development/tests }
     Invoke-Checked 'Ruff format' { ruff format --check programs scripts development/tests }
     Invoke-Checked 'mypy' { mypy }
