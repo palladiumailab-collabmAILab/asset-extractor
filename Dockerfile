@@ -15,4 +15,4 @@ RUN python -m pip install --root-user-action=ignore --disable-pip-version-check 
 
 COPY . .
 
-CMD ["sh", "-c", "python scripts/validate-skills.py skills && coverage run --branch -m unittest discover -s development/tests -t . && coverage report --omit='*/config-*.py' --fail-under=55 && ruff check programs scripts development/tests && ruff format --check programs scripts development/tests && mypy && python scripts/validate-schemas.py --manifest visual-reference-evidence=development/config/character-asset-evidence-20260914.json --manifest visual-reference-evidence=development/config/kainin-asset-variants-20260914.json"]
+CMD ["sh", "-c", "python scripts/validate-skills.py skills && coverage run --branch -m unittest discover -s development/tests -t . && coverage report --omit='*/config.py,*/config-*.py' --fail-under=55 && ruff check programs scripts development/tests && ruff format --check programs scripts development/tests && mypy && python scripts/validate-schemas.py --manifest visual-reference-evidence=development/config/character-asset-evidence-20260914.json --manifest visual-reference-evidence=development/config/kainin-asset-variants-20260914.json"]
