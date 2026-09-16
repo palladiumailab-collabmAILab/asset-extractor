@@ -7,9 +7,11 @@ from zipfile import ZipInfo
 
 from .errors import ExtractionError
 
-_RESERVED_WINDOWS_NAMES = {"CON", "PRN", "AUX", "NUL"} | {
-    f"COM{index}" for index in range(1, 10)
-} | {f"LPT{index}" for index in range(1, 10)}
+_RESERVED_WINDOWS_NAMES = (
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{index}" for index in range(1, 10)}
+    | {f"LPT{index}" for index in range(1, 10)}
+)
 
 
 def is_within(child: Path, parent: Path) -> bool:
@@ -61,10 +63,14 @@ def normalized_member_name(info: ZipInfo) -> str:
         raise ExtractionError(f"traversal or ambiguous ZIP member path: {info.filename!r}")
     for part in parts:
         if ":" in part:
-            raise ExtractionError(f"alternate-data-stream ZIP member path is not allowed: {info.filename!r}")
+            raise ExtractionError(
+                f"alternate-data-stream ZIP member path is not allowed: {info.filename!r}"
+            )
         stem = part.split(".", 1)[0].upper()
         if stem in _RESERVED_WINDOWS_NAMES:
-            raise ExtractionError(f"reserved Windows ZIP member path is not allowed: {info.filename!r}")
+            raise ExtractionError(
+                f"reserved Windows ZIP member path is not allowed: {info.filename!r}"
+            )
     mode = (info.external_attr >> 16) & 0o170000
     if stat.S_ISLNK(mode):
         raise ExtractionError(f"symbolic-link ZIP member is not allowed: {info.filename!r}")

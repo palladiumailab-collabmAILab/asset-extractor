@@ -36,7 +36,9 @@ class AssetExtractorTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def make_zip(self, name: str, entries: list[tuple[str, bytes]], compression: int = zipfile.ZIP_DEFLATED) -> Path:
+    def make_zip(
+        self, name: str, entries: list[tuple[str, bytes]], compression: int = zipfile.ZIP_DEFLATED
+    ) -> Path:
         path = self.root / name
         with zipfile.ZipFile(path, "w", compression=compression) as archive:
             for member, payload in entries:
@@ -128,13 +130,17 @@ class AssetExtractorTests(unittest.TestCase):
         manifest = extract_inputs([str(source)], destination)
         self.assertEqual(manifest["status"], "complete")
         self.assertEqual(before, hashlib.sha256(source.read_bytes()).hexdigest())
-        self.assertEqual((destination / "extracted/001-sample/res/data.bin").read_bytes(), b"payload")
+        self.assertEqual(
+            (destination / "extracted/001-sample/res/data.bin").read_bytes(), b"payload"
+        )
         row = manifest["inputs"][0]
         self.assertEqual(row["source_sha256_before"], before)
         self.assertEqual(row["source_sha256_after"], before)
         self.assertTrue(row["source_unchanged"])
         saved = json.loads((destination / "run-manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved["outputs"]["files"][0]["sha256"], hashlib.sha256(b"payload").hexdigest())
+        self.assertEqual(
+            saved["outputs"]["files"][0]["sha256"], hashlib.sha256(b"payload").hexdigest()
+        )
         entry = saved["entries"][0]
         self.assertRegex(entry["asset_id"], r"^[0-9a-f]{64}$")
         self.assertEqual(entry["source_input_index"], 0)
@@ -231,19 +237,27 @@ class AssetExtractorTests(unittest.TestCase):
 
     def test_absolute_and_case_collision_are_rejected(self) -> None:
         absolute = self.make_zip("absolute.zip", [("/escape.txt", b"no")])
-        self.assertEqual(extract_inputs([str(absolute)], self.root / "absolute-run")["status"], "failed")
+        self.assertEqual(
+            extract_inputs([str(absolute)], self.root / "absolute-run")["status"], "failed"
+        )
         collision = self.make_zip("collision.zip", [("A.txt", b"a"), ("a.txt", b"b")])
-        self.assertEqual(extract_inputs([str(collision)], self.root / "collision-run")["status"], "failed")
+        self.assertEqual(
+            extract_inputs([str(collision)], self.root / "collision-run")["status"], "failed"
+        )
 
     def test_compression_ratio_is_enforced(self) -> None:
         source = self.make_zip("ratio.zip", [("large.txt", b"a" * 10000)])
         limits = dict(DEFAULT_LIMITS, max_ratio=2.0)
         manifest = extract_inputs([str(source)], self.root / "ratio-run", limits=limits)
         self.assertEqual(manifest["status"], "failed")
-        self.assertTrue(any("compression ratio" in failure["error"] for failure in manifest["failures"]))
+        self.assertTrue(
+            any("compression ratio" in failure["error"] for failure in manifest["failures"])
+        )
 
     def test_limits_are_enforced(self) -> None:
-        source = self.make_zip("limited.zip", [("large.bin", b"1234567890")], compression=zipfile.ZIP_STORED)
+        source = self.make_zip(
+            "limited.zip", [("large.bin", b"1234567890")], compression=zipfile.ZIP_STORED
+        )
         limits = dict(DEFAULT_LIMITS, max_member_bytes=5)
         manifest = extract_inputs([str(source)], self.root / "limited-run", limits=limits)
         self.assertEqual(manifest["status"], "failed")
@@ -275,7 +289,9 @@ class AssetExtractorTests(unittest.TestCase):
         destination = self.root / "changing-run"
         original = pipeline_module._extract_zip
 
-        def extract_then_change(path: Path, target: Path, limits: dict[str, int | float]) -> list[dict[str, object]]:
+        def extract_then_change(
+            path: Path, target: Path, limits: dict[str, int | float]
+        ) -> list[dict[str, object]]:
             rows = original(path, target, limits)
             path.write_bytes(path.read_bytes() + b"changed")
             return rows
@@ -315,7 +331,9 @@ class AssetExtractorTests(unittest.TestCase):
         manifest = extract_inputs([str(source)], self.root / "real-header-run")
         self.assertEqual(manifest["status"], "complete")
         self.assertEqual(
-            (self.root / "real-header-run/extracted/001-real-header/0000000_00005678.bin").read_bytes(),
+            (
+                self.root / "real-header-run/extracted/001-real-header/0000000_00005678.bin"
+            ).read_bytes(),
             b"real 24-byte NXPK header",
         )
 
@@ -324,7 +342,9 @@ class AssetExtractorTests(unittest.TestCase):
         limits = dict(DEFAULT_LIMITS, max_total_bytes=9)
         manifest = extract_inputs([str(source)], self.root / "total-run", limits=limits)
         self.assertEqual(manifest["status"], "failed")
-        self.assertTrue(any("total output limit" in failure["error"] for failure in manifest["failures"]))
+        self.assertTrue(
+            any("total output limit" in failure["error"] for failure in manifest["failures"])
+        )
 
     def test_nxpk_bounds_and_declared_size_fail_closed(self) -> None:
         source = self.make_nxpk("bounds.npk")
@@ -338,20 +358,26 @@ class AssetExtractorTests(unittest.TestCase):
         bad_size = self.make_nxpk_entries("size.npk", [(b"x", 0, 2)])
         manifest = extract_inputs([str(bad_size)], self.root / "size-run")
         self.assertEqual(manifest["status"], "failed")
-        self.assertTrue(any("size mismatch" in failure["error"] for failure in manifest["failures"]))
+        self.assertTrue(
+            any("size mismatch" in failure["error"] for failure in manifest["failures"])
+        )
 
     def test_nxpk_unknown_flag_is_rejected(self) -> None:
         source = self.make_nxpk_entries("flag.npk", [(b"x", 0x20000, None)])
         manifest = extract_inputs([str(source)], self.root / "flag-run")
         self.assertEqual(manifest["status"], "failed")
-        self.assertTrue(any("unsupported NXPK flag" in failure["error"] for failure in manifest["failures"]))
+        self.assertTrue(
+            any("unsupported NXPK flag" in failure["error"] for failure in manifest["failures"])
+        )
 
     def test_nxpk_zlib_entry_has_exact_expanded_size(self) -> None:
         source = self.make_nxpk_entries("compressed.npk", [(b"compressed payload", 1, None)])
         manifest = extract_inputs([str(source)], self.root / "compressed-run")
         self.assertEqual(manifest["status"], "complete")
         self.assertEqual(manifest["entries"][0]["compression_flag"], 1)
-        self.assertEqual(manifest["entries"][0]["actual_unpacked_bytes"], len(b"compressed payload"))
+        self.assertEqual(
+            manifest["entries"][0]["actual_unpacked_bytes"], len(b"compressed payload")
+        )
 
     def test_nxpk_compression_ratio_is_enforced(self) -> None:
         source = self.make_nxpk_entries("compressed-ratio.npk", [(b"a" * 1000, 1, None)])
@@ -361,7 +387,9 @@ class AssetExtractorTests(unittest.TestCase):
             limits=dict(DEFAULT_LIMITS, max_ratio=2.0),
         )
         self.assertEqual(manifest["status"], "failed")
-        self.assertTrue(any("compression ratio" in failure["error"] for failure in manifest["failures"]))
+        self.assertTrue(
+            any("compression ratio" in failure["error"] for failure in manifest["failures"])
+        )
 
     def test_resume_revalidates_key_and_output_hashes(self) -> None:
         source = self.make_zip("resume.zip", [("x.txt", b"original")])
@@ -389,9 +417,16 @@ class AssetExtractorTests(unittest.TestCase):
         source2 = self.make_zip("resume3.zip", [("x.txt", b"original")])
         destination2 = self.root / "resume3-run"
         extract_inputs([str(source2)], destination2)
-        rejected = extract_inputs([str(source2)], destination2, resume=True, limits=dict(DEFAULT_LIMITS, max_entries=10))
+        rejected = extract_inputs(
+            [str(source2)], destination2, resume=True, limits=dict(DEFAULT_LIMITS, max_entries=10)
+        )
         self.assertEqual(rejected["status"], "failed")
-        self.assertTrue(any("configuration" in failure["error"] or "resume key" in failure["error"] for failure in rejected["failures"]))
+        self.assertTrue(
+            any(
+                "configuration" in failure["error"] or "resume key" in failure["error"]
+                for failure in rejected["failures"]
+            )
+        )
 
     def test_resume_rejects_symlink_output_when_supported(self) -> None:
         source = self.make_zip("symlink.zip", [("x.txt", b"original")])
@@ -407,7 +442,9 @@ class AssetExtractorTests(unittest.TestCase):
             self.skipTest("symlink creation is not available")
         rejected = extract_inputs([str(source)], destination, resume=True)
         self.assertEqual(rejected["status"], "failed")
-        self.assertTrue(any("symbolic-link" in failure["error"] for failure in rejected["failures"]))
+        self.assertTrue(
+            any("symbolic-link" in failure["error"] for failure in rejected["failures"])
+        )
         self.assertEqual(backup.read_text(encoding="utf-8"), "outside")
 
     def test_manifest_validation_command_detects_tampering(self) -> None:

@@ -85,12 +85,8 @@ class PrepareTexturedRuntimeTests(unittest.TestCase):
 
     def test_active_or_current_runtime_is_not_redelegated(self) -> None:
         with patch.object(MODULE.subprocess, "run") as run:
-            self.assertIsNone(
-                MODULE.maybe_delegate_runtime([], Path(sys.executable), False)
-            )
-            self.assertIsNone(
-                MODULE.maybe_delegate_runtime([], Path("ignored-python"), True)
-            )
+            self.assertIsNone(MODULE.maybe_delegate_runtime([], Path(sys.executable), False))
+            self.assertIsNone(MODULE.maybe_delegate_runtime([], Path("ignored-python"), True))
         run.assert_not_called()
 
     def test_upstream_import_preflight_restores_sys_path_on_failure(self) -> None:

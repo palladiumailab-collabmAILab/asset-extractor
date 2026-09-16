@@ -129,22 +129,44 @@ def build_scan_manifest(raw_inputs: list[str], limits: dict[str, int | float]) -
                     "entries": None,
                 }
             )
-            failures.append({"path": str(resolved), "error": "input does not exist", "stage": "input"})
+            failures.append(
+                {"path": str(resolved), "error": "input does not exist", "stage": "input"}
+            )
             continue
-        paths = [path] if path.is_file() else sorted(item for item in path.rglob("*") if item.is_file())
+        paths = (
+            [path] if path.is_file() else sorted(item for item in path.rglob("*") if item.is_file())
+        )
         for item in paths:
             try:
                 row = scan_file(item.resolve(), limits)
                 inputs.append(row)
                 if row["status"] == "error":
-                    failures.append({"path": row["path"], "error": row["error"] or "scan failed", "stage": "scan"})
+                    failures.append(
+                        {
+                            "path": row["path"],
+                            "error": row["error"] or "scan failed",
+                            "stage": "scan",
+                        }
+                    )
                 elif row["source_unchanged"] is False:
-                    failures.append({"path": row["path"], "error": "source changed during scan", "stage": "source-audit"})
+                    failures.append(
+                        {
+                            "path": row["path"],
+                            "error": "source changed during scan",
+                            "stage": "source-audit",
+                        }
+                    )
             except (OSError, ExtractionError) as exc:
                 failures.append({"path": str(item), "error": str(exc), "stage": "scan"})
     unsupported = [row for row in inputs if row.get("status") != "ok"]
     source_states = [row["source_unchanged"] for row in inputs]
-    source_unchanged = False if any(state is False for state in source_states) else True if source_states and all(state is True for state in source_states) else None
+    source_unchanged = (
+        False
+        if any(state is False for state in source_states)
+        else True
+        if source_states and all(state is True for state in source_states)
+        else None
+    )
     normalized_config = {"profile": None, "strict": None, "limits": dict(limits)}
     return {
         "schema_version": 2,
@@ -167,6 +189,11 @@ def build_scan_manifest(raw_inputs: list[str], limits: dict[str, int | float]) -
         "claims": (
             [{"claim": "source files were read without modification", "certainty": "fact"}]
             if source_unchanged is True
-            else [{"claim": "source stability was not established for every requested input", "certainty": "unknown"}]
+            else [
+                {
+                    "claim": "source stability was not established for every requested input",
+                    "certainty": "unknown",
+                }
+            ]
         ),
     }

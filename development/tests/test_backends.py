@@ -71,10 +71,10 @@ class BackendContractTests(unittest.TestCase):
             script = root / "wrapper.py"
             script.write_text("", encoding="utf-8")
             adapter = DedicatedBackend(script)
-            request = BackendRequest(
-                source_paths=(source,), output=output, backend="auto"
-            )
-            with patch("asset_extractor.backends.subprocess.run", return_value=CompletedProcess([], 1)) as run:
+            request = BackendRequest(source_paths=(source,), output=output, backend="auto")
+            with patch(
+                "asset_extractor.backends.subprocess.run", return_value=CompletedProcess([], 1)
+            ) as run:
                 manifest = adapter.extract(request)
             self.assertEqual(manifest["status"], "partial")
             command = run.call_args.args[0]
@@ -82,10 +82,18 @@ class BackendContractTests(unittest.TestCase):
             self.assertFalse(run.call_args.kwargs.get("shell", False))
 
     def test_extract_cli_exposes_backend_selection(self) -> None:
-        arguments = build_parser().parse_args([
-            "extract", "source.npk", "--output", "run", "--backend", "auto",
-            "--game-profile", "onmyoji",
-        ])
+        arguments = build_parser().parse_args(
+            [
+                "extract",
+                "source.npk",
+                "--output",
+                "run",
+                "--backend",
+                "auto",
+                "--game-profile",
+                "onmyoji",
+            ]
+        )
         self.assertEqual(arguments.backend, "auto")
         self.assertEqual(arguments.game_profile, "onmyoji")
 

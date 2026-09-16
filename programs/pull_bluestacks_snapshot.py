@@ -24,9 +24,7 @@ from runtime_artifacts import sha256_file, sha256_json, utc_now, write_json_atom
 VERSION = "0.1.0"
 DEFAULT_PACKAGE = "com.netease.onmyoji.na"
 DEFAULT_SERIAL = "127.0.0.1:5555"
-DEFAULT_REMOTE_TEMPLATE = (
-    "/sdcard/Android/data/{package}/files/netease/onmyoji/Documents/OptionRes"
-)
+DEFAULT_REMOTE_TEMPLATE = "/sdcard/Android/data/{package}/files/netease/onmyoji/Documents/OptionRes"
 ROOT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+$")
 DEFAULT_MAX_FILES = 50_000
@@ -133,10 +131,7 @@ def parse_inventory_output(remote_root: str, output: str) -> dict[str, dict[str,
 
 
 def remote_inventory(adb: Path, serial: str, remote_root: str) -> dict[str, dict[str, int]]:
-    command = (
-        f"find {shlex.quote(remote_root)} -type f "
-        "-exec stat -c '%s|%Y|%n' {} \\;"
-    )
+    command = f"find {shlex.quote(remote_root)} -type f " "-exec stat -c '%s|%Y|%n' {} \\;"
     completed = run_adb(adb, serial, ["shell", command])
     return parse_inventory_output(remote_root, completed.stdout)
 
@@ -418,14 +413,22 @@ def _build_snapshot_manifest(
             "files": len(files),
             "bytes": sum(item["bytes"] for item in files),
             "remote_unchanged": sum(item["remote_unchanged"] is True for item in files),
-            "remote_changed_or_missing": sum(item["remote_unchanged"] is not True for item in files),
+            "remote_changed_or_missing": sum(
+                item["remote_unchanged"] is not True for item in files
+            ),
             "failures": len(failures),
         },
         "failures": failures,
         "claims": [
             {"certainty": "fact", "text": "Every listed local file has a SHA-256 digest."},
-            {"certainty": "fact", "text": "Remote size and mtime were compared before and after each capture root."},
-            {"certainty": "scope", "text": "Only explicitly configured ADB-readable roots and optional installed APK paths were captured."},
+            {
+                "certainty": "fact",
+                "text": "Remote size and mtime were compared before and after each capture root.",
+            },
+            {
+                "certainty": "scope",
+                "text": "Only explicitly configured ADB-readable roots and optional installed APK paths were captured.",
+            },
         ],
     }
 
@@ -465,8 +468,13 @@ def snapshot(
             raise AcquisitionError(f"ADB target is not ready: {state!r}")
         properties = device_properties(adb, serial)
         adb_version = subprocess.run(
-            [str(adb), "version"], check=True, capture_output=True, text=True,
-            encoding="utf-8", errors="strict", timeout=ADB_TIMEOUT_SECONDS,
+            [str(adb), "version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            timeout=ADB_TIMEOUT_SECONDS,
         ).stdout.splitlines()[0]
 
         for root_name, remote_root in remote_roots:
@@ -498,7 +506,12 @@ def snapshot(
                 max_total_bytes=max_total_bytes,
             )
 
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired, AcquisitionError) as exc:
+    except (
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        AcquisitionError,
+    ) as exc:
         failures.append({"stage": "setup-or-inventory", "source": serial, "error": str(exc)})
 
     manifest = _build_snapshot_manifest(
@@ -568,11 +581,16 @@ def main(argv: list[str] | None = None) -> int:
     except AcquisitionError as exc:
         print(json.dumps({"status": "failed", "error": str(exc)}, ensure_ascii=False))
         return 2
-    print(json.dumps({
-        "status": manifest["status"],
-        "manifest": str(args.output.resolve() / "snapshot-manifest.json"),
-        **manifest["summary"],
-    }, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "status": manifest["status"],
+                "manifest": str(args.output.resolve() / "snapshot-manifest.json"),
+                **manifest["summary"],
+            },
+            ensure_ascii=False,
+        )
+    )
     return 0 if manifest["status"] == "complete" else 1
 
 

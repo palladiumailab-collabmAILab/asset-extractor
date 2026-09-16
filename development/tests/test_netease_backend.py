@@ -38,18 +38,29 @@ class NetEaseBackendTests(unittest.TestCase):
         self.assertEqual(selected[0], "neoxtractor")
 
     def test_auto_falls_back_when_profile_or_checkout_is_missing(self) -> None:
-        self.assertEqual(MODULE.select_backend("auto", self.source, "generic", self.root, None)[0], "builtin")
-        self.assertEqual(MODULE.select_backend("auto", self.source, "onmyoji", None, None)[0], "builtin")
+        self.assertEqual(
+            MODULE.select_backend("auto", self.source, "generic", self.root, None)[0], "builtin"
+        )
+        self.assertEqual(
+            MODULE.select_backend("auto", self.source, "onmyoji", None, None)[0], "builtin"
+        )
 
     def test_explicit_missing_backend_fails(self) -> None:
         with self.assertRaises(MODULE.ExtractionError):
             MODULE.select_backend("neoxtractor", self.source, "onmyoji", None, None)
 
     def test_backend_cli_exposes_runtime_and_both_wrappers(self) -> None:
-        args = MODULE.build_parser().parse_args([
-            str(self.source), "--output", str(self.root / "run"),
-            "--backend", "neox-tools", "--backend-python", str(self.root / "python.exe"),
-        ])
+        args = MODULE.build_parser().parse_args(
+            [
+                str(self.source),
+                "--output",
+                str(self.root / "run"),
+                "--backend",
+                "neox-tools",
+                "--backend-python",
+                str(self.root / "python.exe"),
+            ]
+        )
         self.assertEqual(args.backend, "neox-tools")
         self.assertEqual(args.backend_python, self.root / "python.exe")
 
@@ -61,15 +72,27 @@ class NetEaseBackendTests(unittest.TestCase):
         payload.write_bytes(b"mesh")
         result = {
             "tool_metadata": {"commit": "a" * 40},
-            "entries": [{
-                "ordinal": 0, "payload_id": 7, "offset": 64,
-                "packed_bytes": 4, "declared_unpacked_bytes": 4,
-                "flags_raw": 0, "name": "model/s2_hairen/s2_hairen.mesh",
-                "output_path": str(payload), "output_sha256": "b" * 64,
-                "actual_size": 4, "detected_type": "mesh", "status": "ok", "error": None,
-            }],
+            "entries": [
+                {
+                    "ordinal": 0,
+                    "payload_id": 7,
+                    "offset": 64,
+                    "packed_bytes": 4,
+                    "declared_unpacked_bytes": 4,
+                    "flags_raw": 0,
+                    "name": "model/s2_hairen/s2_hairen.mesh",
+                    "output_path": str(payload),
+                    "output_sha256": "b" * 64,
+                    "actual_size": 4,
+                    "detected_type": "mesh",
+                    "status": "ok",
+                    "error": None,
+                }
+            ],
         }
-        entries, failures = MODULE._normalized_external_entries(self.source, "c" * 64, "neoxtractor", result, output)
+        entries, failures = MODULE._normalized_external_entries(
+            self.source, "c" * 64, "neoxtractor", result, output
+        )
         self.assertFalse(failures)
         self.assertEqual(entries[0]["logical_path"], "model/s2_hairen/s2_hairen.mesh")
         self.assertEqual(entries[0]["output_path"], "raw/0000000.mesh")
@@ -96,31 +119,35 @@ class NetEaseBackendTests(unittest.TestCase):
         index = {
             "entry_count": 1,
             "index_size": 32,
-            "entries": [{
-                "ordinal": 0,
-                "payload_id": 7,
-                "offset": 64,
-                "packed_bytes": 4,
-                "declared_unpacked_bytes": 4,
-                "flags_raw": 0,
-            }],
+            "entries": [
+                {
+                    "ordinal": 0,
+                    "payload_id": 7,
+                    "offset": 64,
+                    "packed_bytes": 4,
+                    "declared_unpacked_bytes": 4,
+                    "flags_raw": 0,
+                }
+            ],
         }
         result = {
             "tool_metadata": {"commit": "a" * 40},
-            "entries": [{
-                "ordinal": 0,
-                "payload_id": 7,
-                "offset": 64,
-                "packed_bytes": 4,
-                "declared_unpacked_bytes": 4,
-                "flags_raw": 0,
-                "name": "model/s2_hairen/s2_hairen.mesh",
-                "output_sha256": "b" * 64,
-                "actual_size": 4,
-                "detected_type": "mesh",
-                "status": "ok",
-                "error": None,
-            }],
+            "entries": [
+                {
+                    "ordinal": 0,
+                    "payload_id": 7,
+                    "offset": 64,
+                    "packed_bytes": 4,
+                    "declared_unpacked_bytes": 4,
+                    "flags_raw": 0,
+                    "name": "model/s2_hairen/s2_hairen.mesh",
+                    "output_sha256": "b" * 64,
+                    "actual_size": 4,
+                    "detected_type": "mesh",
+                    "status": "ok",
+                    "error": None,
+                }
+            ],
         }
 
         def fake_run_neox(source, destination, parsed_index, root, parsed_config):
@@ -130,8 +157,9 @@ class NetEaseBackendTests(unittest.TestCase):
             result["entries"][0]["output_path"] = str(payload)
             return result
 
-        with patch.object(MODULE.run_pilot, "parse_index", return_value=index), patch.object(
-            MODULE.run_pilot, "run_neox", side_effect=fake_run_neox
+        with (
+            patch.object(MODULE.run_pilot, "parse_index", return_value=index),
+            patch.object(MODULE.run_pilot, "run_neox", side_effect=fake_run_neox),
         ):
             manifest = MODULE.run_backend(
                 source=self.source,

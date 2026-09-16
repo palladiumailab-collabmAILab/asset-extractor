@@ -47,9 +47,19 @@ def _load_config(path: Path) -> dict[str, Any]:
         # schemas. Preserve a useful structural guard in that environment.
         errors = []
         allowed = {
-            "sources", "acquisition", "dictionary", "backend", "game_profile", "profile",
-            "best_effort", "neoxtractor_root", "neoxtractor_config", "neox_tools_root",
-            "backend_python", "textured", "references",
+            "sources",
+            "acquisition",
+            "dictionary",
+            "backend",
+            "game_profile",
+            "profile",
+            "best_effort",
+            "neoxtractor_root",
+            "neoxtractor_config",
+            "neox_tools_root",
+            "backend_python",
+            "textured",
+            "references",
         }
         unexpected = sorted(set(document) - allowed)
         if unexpected:
@@ -84,7 +94,9 @@ def _result(status: str, manifest: Path | None = None, **fields: Any) -> dict[st
     return result
 
 
-def _source_paths(config: dict[str, Any], config_dir: Path, run_root: Path) -> tuple[list[Path], dict[str, Any]]:
+def _source_paths(
+    config: dict[str, Any], config_dir: Path, run_root: Path
+) -> tuple[list[Path], dict[str, Any]]:
     sources = config.get("sources")
     acquisition = config.get("acquisition")
     if sources is not None and acquisition is not None:
@@ -96,7 +108,9 @@ def _source_paths(config: dict[str, Any], config_dir: Path, run_root: Path) -> t
         missing = [str(path) for path in source_paths if not path.is_file()]
         if missing:
             raise PipelineError(f"source file is missing: {missing[0]}")
-        return source_paths, _result("complete", source_count=len(source_paths), method="configured-sources")
+        return source_paths, _result(
+            "complete", source_count=len(source_paths), method="configured-sources"
+        )
     if not isinstance(acquisition, dict):
         raise PipelineError("configure sources or acquisition")
 
@@ -152,21 +166,29 @@ def _source_paths(config: dict[str, Any], config_dir: Path, run_root: Path) -> t
         current = candidate
         while current != acquisition_root:
             if current.is_symlink():
-                raise PipelineError(f"BlueStacks acquisition path contains a symlink: {raw_local_path}")
+                raise PipelineError(
+                    f"BlueStacks acquisition path contains a symlink: {raw_local_path}"
+                )
             current = current.parent
         resolved_path = candidate.resolve()
         try:
             resolved_path.relative_to(acquisition_root)
         except ValueError as exc:
-            raise PipelineError(f"BlueStacks acquisition path escapes snapshot root: {raw_local_path}") from exc
+            raise PipelineError(
+                f"BlueStacks acquisition path escapes snapshot root: {raw_local_path}"
+            ) from exc
         if not resolved_path.is_file() or resolved_path.is_symlink():
-            raise PipelineError(f"BlueStacks acquisition file is missing or unsafe: {resolved_path}")
+            raise PipelineError(
+                f"BlueStacks acquisition file is missing or unsafe: {resolved_path}"
+            )
         expected_bytes = row.get("bytes")
         expected_sha256 = row.get("sha256")
         actual_bytes = resolved_path.stat().st_size
         actual_sha256 = sha256_file(resolved_path)
         if actual_bytes != expected_bytes or actual_sha256 != expected_sha256:
-            raise PipelineError(f"BlueStacks acquisition file changed after capture: {resolved_path}")
+            raise PipelineError(
+                f"BlueStacks acquisition file changed after capture: {resolved_path}"
+            )
         paths.append(resolved_path)
     return paths, _result(
         "complete" if completed.returncode == 0 else "partial",
@@ -245,10 +267,18 @@ def _request_for_sources(
         game_profile=str(config.get("game_profile", "onmyoji")),
         profile=str(config.get("profile", "auto")),
         strict=not bool(config.get("best_effort", False)),
-        neoxtractor_root=_path(config["neoxtractor_root"], config_dir, "neoxtractor_root") if config.get("neoxtractor_root") else None,
-        neoxtractor_config=_path(config["neoxtractor_config"], config_dir, "neoxtractor_config") if config.get("neoxtractor_config") else None,
-        neox_tools_root=_path(config["neox_tools_root"], config_dir, "neox_tools_root") if config.get("neox_tools_root") else None,
-        backend_python=_path(config["backend_python"], config_dir, "backend_python") if config.get("backend_python") else None,
+        neoxtractor_root=_path(config["neoxtractor_root"], config_dir, "neoxtractor_root")
+        if config.get("neoxtractor_root")
+        else None,
+        neoxtractor_config=_path(config["neoxtractor_config"], config_dir, "neoxtractor_config")
+        if config.get("neoxtractor_config")
+        else None,
+        neox_tools_root=_path(config["neox_tools_root"], config_dir, "neox_tools_root")
+        if config.get("neox_tools_root")
+        else None,
+        backend_python=_path(config["backend_python"], config_dir, "backend_python")
+        if config.get("backend_python")
+        else None,
     )
 
 
@@ -279,7 +309,9 @@ def _rebase_entries(
         try:
             entry["output_path"] = actual.relative_to(combined_root.resolve()).as_posix()
         except ValueError as exc:
-            raise PipelineError(f"backend output escaped combined extraction root: {actual}") from exc
+            raise PipelineError(
+                f"backend output escaped combined extraction root: {actual}"
+            ) from exc
         entry["source_input_index"] = source_input_index
         rebased.append(entry)
     return rebased
@@ -299,7 +331,9 @@ def _extract_sources(
     failures: list[dict[str, Any]] = []
     for index, source in enumerate(sources):
         source_run = output / f"source-{index:04d}"
-        manifest = extract_with_backend(_request_for_source(config, config_dir, source, source_run), None)
+        manifest = extract_with_backend(
+            _request_for_source(config, config_dir, source, source_run), None
+        )
         combined_entries.extend(_rebase_entries(manifest, source_run, output, index))
         source_info = manifest.get("source")
         manifest_name = (
@@ -311,14 +345,26 @@ def _extract_sources(
             {
                 "source": str(source.resolve()),
                 "manifest": str((source_run / manifest_name).resolve()),
-                "sha256_before": source_info.get("sha256_before") if isinstance(source_info, dict) else None,
-                "sha256_after": source_info.get("sha256_after") if isinstance(source_info, dict) else None,
-                "unchanged": source_info.get("unchanged") if isinstance(source_info, dict) else None,
+                "sha256_before": source_info.get("sha256_before")
+                if isinstance(source_info, dict)
+                else None,
+                "sha256_after": source_info.get("sha256_after")
+                if isinstance(source_info, dict)
+                else None,
+                "unchanged": source_info.get("unchanged")
+                if isinstance(source_info, dict)
+                else None,
                 "status": manifest.get("status"),
             }
         )
         failures.extend(manifest.get("failures", []))
-    status = "complete" if combined_entries and not failures else "partial" if combined_entries else "failed"
+    status = (
+        "complete"
+        if combined_entries and not failures
+        else "partial"
+        if combined_entries
+        else "failed"
+    )
     combined = {
         "schema_version": 1,
         "operation": "extract-backend-collection",
@@ -331,7 +377,12 @@ def _extract_sources(
         "output_directory": str(output.resolve()),
         "entries": combined_entries,
         "failures": failures,
-        "claims": [{"claim": "dedicated backend outputs were rebased into one pipeline run", "certainty": "fact"}],
+        "claims": [
+            {
+                "claim": "dedicated backend outputs were rebased into one pipeline run",
+                "certainty": "fact",
+            }
+        ],
     }
     atomic_write_json(output / "backend-runs-manifest.json", combined)
     return combined
@@ -341,26 +392,51 @@ def _run_textured_stage(run_root: Path, config_dir: Path, config: dict[str, Any]
     source_tree = _path(config.get("source_tree"), config_dir, "textured.source_tree")
     script = Path(__file__).resolve().parents[2] / "prepare_textured_pilot.py"
     output = run_root / "textured"
-    arguments = ["--run-root", str(run_root), "--output", str(output), "--source-tree", str(source_tree)]
+    arguments = [
+        "--run-root",
+        str(run_root),
+        "--output",
+        str(output),
+        "--source-tree",
+        str(source_tree),
+    ]
     for catalog in config.get("catalog_runs", []):
-        arguments.extend(("--catalog-run", str(_path(catalog, config_dir, "textured.catalog_runs[]"))))
+        arguments.extend(
+            ("--catalog-run", str(_path(catalog, config_dir, "textured.catalog_runs[]")))
+        )
     if config.get("allow_equivalent_material_duplicates", False):
         arguments.append("--allow-equivalent-material-duplicates")
     for mesh_sha in config.get("only_mesh_sha256", []):
         arguments.extend(("--only-mesh-sha256", str(mesh_sha)))
     if config.get("material_overrides"):
-        arguments.extend(("--material-overrides", str(_path(config["material_overrides"], config_dir, "textured.material_overrides"))))
+        arguments.extend(
+            (
+                "--material-overrides",
+                str(_path(config["material_overrides"], config_dir, "textured.material_overrides")),
+            )
+        )
     if config.get("runtime_python"):
-        arguments.extend(("--runtime-python", str(_path(config["runtime_python"], config_dir, "textured.runtime_python"))))
+        arguments.extend(
+            (
+                "--runtime-python",
+                str(_path(config["runtime_python"], config_dir, "textured.runtime_python")),
+            )
+        )
     completed = _run_python(script, arguments)
     manifest = output / "textured-static-manifest.json"
     if not manifest.is_file():
-        return _result("failed", returncode=completed.returncode, error=completed.stderr.strip() or completed.stdout.strip())
+        return _result(
+            "failed",
+            returncode=completed.returncode,
+            error=completed.stderr.strip() or completed.stdout.strip(),
+        )
     document = json.loads(manifest.read_text(encoding="utf-8"))
     return _result(str(document.get("status", "failed")), manifest, returncode=completed.returncode)
 
 
-def _run_render_stage(run_root: Path, textured: dict[str, Any]) -> tuple[dict[str, Any], list[Path]]:
+def _run_render_stage(
+    run_root: Path, textured: dict[str, Any]
+) -> tuple[dict[str, Any], list[Path]]:
     if textured.get("status") not in {"complete", "partial"} or not textured.get("manifest"):
         return _result("skipped", reason="textured stage did not publish a manifest"), []
     document = json.loads(Path(str(textured["manifest"])).read_text(encoding="utf-8"))
@@ -387,7 +463,9 @@ def _run_render_stage(run_root: Path, textured: dict[str, Any]) -> tuple[dict[st
         else:
             failures.append(completed.stderr.strip() or f"renderer failed: {source}")
     status = "complete" if rendered and not failures else "partial" if rendered else "failed"
-    return _result(status, output=str(render_root.resolve()), rendered=len(rendered), failures=failures), rendered
+    return _result(
+        status, output=str(render_root.resolve()), rendered=len(rendered), failures=failures
+    ), rendered
 
 
 def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -> dict[str, Any]:
@@ -405,7 +483,10 @@ def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -
             reference = _path(raw.get("path"), config_dir, f"references[{index}].path")
             configured = raw.get("candidates")
             selected_candidates = (
-                [_path(item, config_dir, f"references[{index}].candidates[]") for item in configured]
+                [
+                    _path(item, config_dir, f"references[{index}].candidates[]")
+                    for item in configured
+                ]
                 if isinstance(configured, list)
                 else candidates
             )
@@ -413,7 +494,11 @@ def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -
             raise PipelineError(f"references[{index}] must be a path or object")
         if not reference.is_file():
             raise PipelineError(f"reference image is missing: {reference}")
-        comparisons = [compare_images(reference, candidate) for candidate in selected_candidates if candidate.is_file()]
+        comparisons = [
+            compare_images(reference, candidate)
+            for candidate in selected_candidates
+            if candidate.is_file()
+        ]
         scored = [item for item in comparisons if item.get("status") == "scored"]
         ranked = sorted(scored, key=lambda item: float(item.get("score", 0.0)), reverse=True)
         best = ranked[0] if ranked else None
@@ -440,8 +525,17 @@ def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -
                 "margin": margin,
             }
         )
-    status = "complete" if results and all(item["accepted"] is not None for item in results) else "partial"
-    return _result(status, count=len(results), results=results, policy="ranking evidence; never rewrites UV/material bindings")
+    status = (
+        "complete"
+        if results and all(item["accepted"] is not None for item in results)
+        else "partial"
+    )
+    return _result(
+        status,
+        count=len(results),
+        results=results,
+        policy="ranking evidence; never rewrites UV/material bindings",
+    )
 
 
 def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
@@ -469,7 +563,11 @@ def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
             ),
             output / "extraction" / "run-manifest.json",
         )
-        stages["extraction"] = _result(str(extraction.get("status", "failed")), extraction_manifest, entries=len(extraction.get("entries", [])))
+        stages["extraction"] = _result(
+            str(extraction.get("status", "failed")),
+            extraction_manifest,
+            entries=len(extraction.get("entries", [])),
+        )
         _write_publication_inputs(output, extraction, extraction_manifest)
         classification = classify_manifest_entries(
             run_root=output,
@@ -478,14 +576,20 @@ def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
             raw_manifest=output / "raw-extraction-manifest.json",
             source_output_root=output / "extraction",
         )
-        stages["classification"] = _result(str(classification.get("status", "failed")), output / "type-classification.json", counts=classification.get("counts", {}))
+        stages["classification"] = _result(
+            str(classification.get("status", "failed")),
+            output / "type-classification.json",
+            counts=classification.get("counts", {}),
+        )
         _build_assets_manifest(classification, output / "assets.json")
         dictionary = config.get("dictionary")
         if dictionary:
             dictionary_path = _path(dictionary, config_dir, "dictionary")
             match = build_match_manifest(dictionary_path, output / "assets.json")
             atomic_write_json(output / "match-manifest.json", match)
-            stages["matching"] = _result("complete", output / "match-manifest.json", summary=match["summary"])
+            stages["matching"] = _result(
+                "complete", output / "match-manifest.json", summary=match["summary"]
+            )
         else:
             stages["matching"] = _result("skipped", reason="no dictionary configured")
         textured_config = config.get("textured")
@@ -497,8 +601,20 @@ def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
             stages["textured"] = _result("skipped", reason="no NeoX publication configuration")
         stages["rendering"], rendered = _run_render_stage(output, stages["textured"])
         stages["visual"] = _run_visual_stage(config.get("references"), config_dir, rendered)
-        required = ["acquisition", "extraction", "classification", "matching", "textured", "rendering", "visual"]
-        status = "complete" if all(stages[name].get("status") == "complete" for name in required) else "partial"
+        required = [
+            "acquisition",
+            "extraction",
+            "classification",
+            "matching",
+            "textured",
+            "rendering",
+            "visual",
+        ]
+        status = (
+            "complete"
+            if all(stages[name].get("status") == "complete" for name in required)
+            else "partial"
+        )
     except (OSError, PipelineError, ExtractionError, ValueError, json.JSONDecodeError) as exc:
         stages["error"] = {"status": "failed", "message": str(exc)}
         status = "failed"

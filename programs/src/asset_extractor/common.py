@@ -29,7 +29,9 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
 
 
 def canonical_json(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 def config_hash(config: dict[str, Any]) -> str:
@@ -75,7 +77,9 @@ def file_rows(root: Path) -> list[dict[str, Any]]:
             if path.stat().st_nlink > 1:
                 raise ExtractionError(f"hard-link output is not allowed: {path}")
             relative = path.relative_to(root).as_posix()
-            rows.append({"path": relative, "bytes": path.stat().st_size, "sha256": sha256_file(path)})
+            rows.append(
+                {"path": relative, "bytes": path.stat().st_size, "sha256": sha256_file(path)}
+            )
     rows.sort(key=lambda item: item["path"])
     return rows
 

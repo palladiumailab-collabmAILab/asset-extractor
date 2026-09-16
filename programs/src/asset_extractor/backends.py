@@ -84,7 +84,9 @@ class DedicatedBackend:
     timeout_seconds = 30 * 60
 
     def __init__(self, script_path: Path | None = None) -> None:
-        self.script_path = (script_path or Path(__file__).resolve().parents[2] / "run_netease_backend.py").resolve()
+        self.script_path = (
+            script_path or Path(__file__).resolve().parents[2] / "run_netease_backend.py"
+        ).resolve()
 
     def _command(self, request: BackendRequest) -> list[str]:
         if len(request.source_paths) != 1:
@@ -135,27 +137,41 @@ class DedicatedBackend:
             try:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as exc:
-                raise ExtractionError(f"dedicated backend wrote an invalid manifest: {manifest_path}") from exc
+                raise ExtractionError(
+                    f"dedicated backend wrote an invalid manifest: {manifest_path}"
+                ) from exc
             if not isinstance(manifest, dict):
-                raise ExtractionError(f"dedicated backend manifest must be an object: {manifest_path}")
+                raise ExtractionError(
+                    f"dedicated backend manifest must be an object: {manifest_path}"
+                )
             if completed.returncode != 0 and manifest.get("status") == "complete":
-                raise ExtractionError("dedicated backend exit code disagrees with complete manifest")
+                raise ExtractionError(
+                    "dedicated backend exit code disagrees with complete manifest"
+                )
             return manifest
-        detail = completed.stderr.strip() or completed.stdout.strip() or f"exit code {completed.returncode}"
+        detail = (
+            completed.stderr.strip()
+            or completed.stdout.strip()
+            or f"exit code {completed.returncode}"
+        )
         raise ExtractionError(f"dedicated backend produced no manifest: {detail}")
 
 
 def default_backend_registry() -> BackendRegistry:
     dedicated = DedicatedBackend()
-    return BackendRegistry({
-        "builtin": BuiltinBackend(),
-        "auto": dedicated,
-        "neoxtractor": dedicated,
-        "neox-tools": dedicated,
-    })
+    return BackendRegistry(
+        {
+            "builtin": BuiltinBackend(),
+            "auto": dedicated,
+            "neoxtractor": dedicated,
+            "neox-tools": dedicated,
+        }
+    )
 
 
-def extract_with_backend(request: BackendRequest, registry: BackendRegistry | None = None) -> dict[str, Any]:
+def extract_with_backend(
+    request: BackendRequest, registry: BackendRegistry | None = None
+) -> dict[str, Any]:
     """Resolve a backend and execute it without exposing adapter internals to the CLI."""
 
     return (registry or default_backend_registry()).resolve(request.backend).extract(request)

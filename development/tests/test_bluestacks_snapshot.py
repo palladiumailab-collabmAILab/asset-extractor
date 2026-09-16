@@ -36,13 +36,22 @@ class BlueStacksSnapshotTests(unittest.TestCase):
 
     def test_remote_root_parser_expands_package_and_rejects_unsafe_paths(self) -> None:
         self.assertEqual(
-            MODULE.parse_remote_root("data=/sdcard/Android/data/{package}/files", "org.example.game"),
+            MODULE.parse_remote_root(
+                "data=/sdcard/Android/data/{package}/files", "org.example.game"
+            ),
             ("data", "/sdcard/Android/data/org.example.game/files"),
         )
-        for raw in ("missing-separator", "bad name=/sdcard/x", "data=relative", "data=/sdcard/a/../b"):
+        for raw in (
+            "missing-separator",
+            "bad name=/sdcard/x",
+            "data=relative",
+            "data=/sdcard/a/../b",
+        ):
             with self.subTest(raw=raw), self.assertRaises(MODULE.AcquisitionError):
                 MODULE.parse_remote_root(raw, "org.example.game")
-        self.assertEqual(MODULE.validate_package("com.netease.onmyoji.na"), "com.netease.onmyoji.na")
+        self.assertEqual(
+            MODULE.validate_package("com.netease.onmyoji.na"), "com.netease.onmyoji.na"
+        )
         with self.assertRaises(MODULE.AcquisitionError):
             MODULE.validate_package("bad package; command")
 
@@ -77,10 +86,14 @@ class BlueStacksSnapshotTests(unittest.TestCase):
             destination.write_bytes(b"payload")
 
         ready = subprocess.CompletedProcess([], 0, stdout="device\n", stderr="")
-        version = subprocess.CompletedProcess([], 0, stdout="Android Debug Bridge version 1.0.41\n", stderr="")
+        version = subprocess.CompletedProcess(
+            [], 0, stdout="Android Debug Bridge version 1.0.41\n", stderr=""
+        )
         with (
             patch.object(MODULE, "run_adb", return_value=ready),
-            patch.object(MODULE, "device_properties", return_value={"ro.product.model": "BlueStacks"}),
+            patch.object(
+                MODULE, "device_properties", return_value={"ro.product.model": "BlueStacks"}
+            ),
             patch.object(MODULE, "remote_inventory", side_effect=[metadata, metadata]),
             patch.object(MODULE, "pull_one", side_effect=fake_pull),
             patch.object(MODULE.subprocess, "run", return_value=version),
@@ -112,8 +125,12 @@ class BlueStacksSnapshotTests(unittest.TestCase):
         self.assertEqual(saved["files"], manifest["files"])
         with self.assertRaises(MODULE.AcquisitionError):
             MODULE.snapshot(
-                adb=Path("C:/tools/adb.exe"), serial="x", package="x",
-                remote_roots=[], output=output, include_apks=False,
+                adb=Path("C:/tools/adb.exe"),
+                serial="x",
+                package="x",
+                remote_roots=[],
+                output=output,
+                include_apks=False,
             )
 
     def test_snapshot_is_incomplete_when_remote_metadata_changes(self) -> None:
@@ -135,8 +152,11 @@ class BlueStacksSnapshotTests(unittest.TestCase):
             patch.object(MODULE.subprocess, "run", return_value=version),
         ):
             manifest = MODULE.snapshot(
-                adb=Path("adb"), serial="serial", package="package",
-                remote_roots=[("raw", "/sdcard/raw")], output=output,
+                adb=Path("adb"),
+                serial="serial",
+                package="package",
+                remote_roots=[("raw", "/sdcard/raw")],
+                output=output,
                 include_apks=False,
             )
         self.assertEqual(manifest["status"], "incomplete")
@@ -155,9 +175,13 @@ class BlueStacksSnapshotTests(unittest.TestCase):
             patch.object(MODULE.subprocess, "run", return_value=version),
         ):
             manifest = MODULE.snapshot(
-                adb=Path("adb"), serial="serial", package="package.name",
-                remote_roots=[("raw", "/sdcard/raw")], output=output,
-                include_apks=False, max_file_bytes=7,
+                adb=Path("adb"),
+                serial="serial",
+                package="package.name",
+                remote_roots=[("raw", "/sdcard/raw")],
+                output=output,
+                include_apks=False,
+                max_file_bytes=7,
             )
         self.assertEqual(manifest["status"], "incomplete")
         self.assertEqual(manifest["summary"]["files"], 0)

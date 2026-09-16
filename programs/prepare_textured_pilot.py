@@ -79,6 +79,7 @@ def load_neoxtractor_modules(source_tree: Path) -> tuple[Any, Any, Any, Any, Any
         from core.mesh_loader import MeshLoader  # type: ignore[import-not-found]
         from core.mesh_loader.types import Bones  # type: ignore[import-not-found]
         from core.npk.npkhash_v1 import mesh_hash  # type: ignore[import-not-found]
+
         return lazy_convert_image, gltf, MeshLoader, Bones, mesh_hash
     finally:
         # Importing an upstream package may add more entries than the one we
@@ -111,9 +112,7 @@ def missing_runtime_dependencies(
 ) -> list[str]:
     required_names = set(required) if required is not None else set(report)
     return sorted(
-        name
-        for name, row in report.items()
-        if name in required_names and not row.get("available")
+        name for name, row in report.items() if name in required_names and not row.get("available")
     )
 
 
@@ -172,7 +171,9 @@ def logical_image_variants(value: str) -> list[str]:
     normalized = normalized_logical_path(value)
     leaf = normalized.rsplit("\\", 1)[-1]
     stem = normalized.rsplit(".", 1)[0] if "." in leaf else normalized
-    return list(dict.fromkeys([normalized, *(f"{stem}.{extension}" for extension in IMAGE_EXTENSIONS)]))
+    return list(
+        dict.fromkeys([normalized, *(f"{stem}.{extension}" for extension in IMAGE_EXTENSIONS)])
+    )
 
 
 def ordered_material_slots(material_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -186,8 +187,14 @@ def ordered_material_slots(material_path: Path) -> tuple[dict[str, Any], list[di
         if material is None:
             raise PublicationError(f"{wrapper.tag} contains no Material")
         param_table = next(material.iter("ParamTable"), None)
-        tex0_nodes = [] if param_table is None else [node for node in list(param_table) if node.tag.lower() == "tex0"]
-        tex0_values = [node.attrib.get("Value", "") for node in tex0_nodes if node.attrib.get("Value")]
+        tex0_nodes = (
+            []
+            if param_table is None
+            else [node for node in list(param_table) if node.tag.lower() == "tex0"]
+        )
+        tex0_values = [
+            node.attrib.get("Value", "") for node in tex0_nodes if node.attrib.get("Value")
+        ]
         technique = next(material.iter("Technique"), None)
         render_states = next(material.iter("RenderStates"), None)
         transparent = next(material.iter("TransparentMode"), None)
@@ -198,9 +205,15 @@ def ordered_material_slots(material_path: Path) -> tuple[dict[str, Any], list[di
                 "name": material.attrib.get("Name", ""),
                 "tex0_values": tex0_values,
                 "technique": technique.attrib.get("TechName") if technique is not None else None,
-                "alpha_ref": render_states.attrib.get("AlphaRef") if render_states is not None else None,
-                "cull_mode": render_states.attrib.get("CullMode") if render_states is not None else None,
-                "transparent_mode": transparent.attrib.get("TransparentMode") if transparent is not None else None,
+                "alpha_ref": render_states.attrib.get("AlphaRef")
+                if render_states is not None
+                else None,
+                "cull_mode": render_states.attrib.get("CullMode")
+                if render_states is not None
+                else None,
+                "transparent_mode": transparent.attrib.get("TransparentMode")
+                if transparent is not None
+                else None,
             }
         )
     declared = int(group.attrib.get("MaterialCount", len(slots)))
@@ -259,7 +272,9 @@ def safe_raw_path(run_root: Path, value: str) -> Path:
     return path
 
 
-def load_catalog(run_roots: Iterable[Path]) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+def load_catalog(
+    run_roots: Iterable[Path],
+) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
     entries: list[dict[str, Any]] = []
     by_hash: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for run_root in run_roots:
@@ -284,7 +299,9 @@ def load_catalog(run_roots: Iterable[Path]) -> tuple[list[dict[str, Any]], dict[
     return entries, dict(by_hash)
 
 
-def resolve_rows(by_hash: dict[str, list[dict[str, Any]]], keys: Iterable[str], category: str) -> list[dict[str, Any]]:
+def resolve_rows(
+    by_hash: dict[str, list[dict[str, Any]]], keys: Iterable[str], category: str
+) -> list[dict[str, Any]]:
     rows: dict[str, dict[str, Any]] = {}
     for key in keys:
         for row in by_hash.get(key.lower(), []):
@@ -293,7 +310,9 @@ def resolve_rows(by_hash: dict[str, list[dict[str, Any]]], keys: Iterable[str], 
     return list(rows.values())
 
 
-def capture_mesh_parts(mesh_loader_class: Any, source: Path) -> tuple[Any, list[tuple[int, int, int, int]]]:
+def capture_mesh_parts(
+    mesh_loader_class: Any, source: Path
+) -> tuple[Any, list[tuple[int, int, int, int]]]:
     """Use NeoXtractor's parser while retaining its ordered submesh header."""
 
     loader = mesh_loader_class()
@@ -380,7 +399,9 @@ def split_primitives_and_attach_materials(
         face_count = part[1]
         accessor = copy.deepcopy(index_accessor)
         accessor["count"] = face_count * 3
-        accessor["byteOffset"] = int(index_accessor.get("byteOffset", 0)) + cursor * 3 * component_size
+        accessor["byteOffset"] = (
+            int(index_accessor.get("byteOffset", 0)) + cursor * 3 * component_size
+        )
         accessor_index = len(document["accessors"])
         document["accessors"].append(accessor)
         item = copy.deepcopy(primitive)
@@ -398,7 +419,8 @@ def split_primitives_and_attach_materials(
             {
                 "name": f"Tex0_{ordinal}_{slot.get('name') or 'material'}",
                 "mimeType": "image/png",
-                "uri": "data:image/png;base64," + base64.b64encode(texture["png_bytes"]).decode("ascii"),
+                "uri": "data:image/png;base64,"
+                + base64.b64encode(texture["png_bytes"]).decode("ascii"),
             }
         )
         document["textures"].append({"sampler": 0, "source": ordinal})
@@ -434,11 +456,15 @@ def split_primitives_and_attach_materials(
         "tex0_bridge": "Tex0 is presented as glTF baseColorTexture; original NeoX shader remains in material extras",
         "submesh_bridge": "ordered headers are paired only when counts exactly match ordered Material_N records",
     }
-    document["asset"]["generator"] = str(document["asset"].get("generator", "NeoXtractor")) + " + asset-extractor textured pilot"
+    document["asset"]["generator"] = (
+        str(document["asset"].get("generator", "NeoXtractor")) + " + asset-extractor textured pilot"
+    )
     return document
 
 
-def validate_gltf(document: dict[str, Any], parts: list[tuple[int, int, int, int]]) -> dict[str, Any]:
+def validate_gltf(
+    document: dict[str, Any], parts: list[tuple[int, int, int, int]]
+) -> dict[str, Any]:
     from PIL import Image
 
     general_validator = "not-installed"
@@ -459,7 +485,12 @@ def validate_gltf(document: dict[str, Any], parts: list[tuple[int, int, int, int
     primitives = document.get("meshes", [{}])[0].get("primitives", [])
     if len(primitives) != len(parts):
         raise PublicationError("glTF primitive count differs from submesh count")
-    if not (len(document.get("materials", [])) == len(document.get("textures", [])) == len(document.get("images", [])) == len(parts)):
+    if not (
+        len(document.get("materials", []))
+        == len(document.get("textures", []))
+        == len(document.get("images", []))
+        == len(parts)
+    ):
         raise PublicationError("glTF material/texture/image counts differ")
     buffers = []
     for item in document.get("buffers", []):
@@ -470,7 +501,14 @@ def validate_gltf(document: dict[str, Any], parts: list[tuple[int, int, int, int
         if len(payload) < int(item.get("byteLength", 0)):
             raise PublicationError("glTF embedded buffer is truncated")
         buffers.append(payload)
-    component = {5120: (1, "b"), 5121: (1, "B"), 5122: (2, "h"), 5123: (2, "H"), 5125: (4, "I"), 5126: (4, "f")}
+    component = {
+        5120: (1, "b"),
+        5121: (1, "B"),
+        5122: (2, "h"),
+        5123: (2, "H"),
+        5125: (4, "I"),
+        5126: (4, "f"),
+    }
     element_count = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
     decoded_accessors: dict[int, list[Any]] = {}
     for index, accessor in enumerate(document.get("accessors", [])):
@@ -479,13 +517,20 @@ def validate_gltf(document: dict[str, Any], parts: list[tuple[int, int, int, int
         width = element_count[accessor["type"]]
         stride = int(view.get("byteStride", size * width))
         start = int(view.get("byteOffset", 0)) + int(accessor.get("byteOffset", 0))
-        end = start if not accessor["count"] else start + (int(accessor["count"]) - 1) * stride + size * width
+        end = (
+            start
+            if not accessor["count"]
+            else start + (int(accessor["count"]) - 1) * stride + size * width
+        )
         view_end = int(view.get("byteOffset", 0)) + int(view["byteLength"])
         raw = buffers[int(view["buffer"])]
         if end > view_end or end > len(raw):
             raise PublicationError(f"accessor {index} exceeds buffer view")
         if accessor["componentType"] in {5123, 5125} and accessor["type"] == "SCALAR":
-            decoded_accessors[index] = [struct.unpack_from("<" + fmt, raw, start + row * stride)[0] for row in range(int(accessor["count"]))]
+            decoded_accessors[index] = [
+                struct.unpack_from("<" + fmt, raw, start + row * stride)[0]
+                for row in range(int(accessor["count"]))
+            ]
         if accessor["componentType"] == 5126:
             for row in range(int(accessor["count"])):
                 values = struct.unpack_from("<" + fmt * width, raw, start + row * stride)
@@ -495,7 +540,12 @@ def validate_gltf(document: dict[str, Any], parts: list[tuple[int, int, int, int
     vertex_cursor = 0
     for primitive, part in zip(primitives, parts):
         indices = decoded_accessors[int(primitive["indices"])]
-        if not indices or min(indices) < vertex_cursor or max(indices) >= vertex_cursor + part[0] or max(indices) >= position_count:
+        if (
+            not indices
+            or min(indices) < vertex_cursor
+            or max(indices) >= vertex_cursor + part[0]
+            or max(indices) >= position_count
+        ):
             raise PublicationError("glTF submesh index bounds are invalid")
         vertex_cursor += part[0]
     for image in document["images"]:
@@ -576,10 +626,14 @@ def resolve_texture_output(
     """Resolve one Tex0 reference and publish its PNG once per content hash."""
 
     variants = logical_image_variants(reference)
-    keyed = [(variant, f"{mesh_hash(normalized_logical_path(variant)):08x}") for variant in variants]
+    keyed = [
+        (variant, f"{mesh_hash(normalized_logical_path(variant)):08x}") for variant in variants
+    ]
     matches = resolve_rows(by_hash, [key for _variant, key in keyed], "texture")
     if len(matches) != 1:
-        raise PublicationError(f"Tex0 did not resolve uniquely: {reference} ({len(matches)} payloads)")
+        raise PublicationError(
+            f"Tex0 did not resolve uniquely: {reference} ({len(matches)} payloads)"
+        )
     texture_row = matches[0]
     chosen = [
         variant
@@ -1026,7 +1080,9 @@ def load_material_overrides(
     return resolved, overrides
 
 
-def _runtime_context(args: argparse.Namespace) -> tuple[Path, list[Path], Path, Path, dict[str, Any]]:
+def _runtime_context(
+    args: argparse.Namespace,
+) -> tuple[Path, list[Path], Path, Path, dict[str, Any]]:
     run_root = args.run_root.resolve()
     catalog_roots = [run_root, *(path.resolve() for path in args.catalog_run)]
     output = args.output.resolve()
@@ -1168,8 +1224,12 @@ def _build_publication_manifests(
     raw_manifest_path: Path,
     differential_path: Path,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    neox_metadata = provenance.get("tools", {}).get("NeoXtractor") or differential.get("NeoXtractor", {}).get("tool_metadata")
-    neox_tools_metadata = provenance.get("tools", {}).get("neox_tools") or differential.get("neox_tools", {}).get("tool_metadata")
+    neox_metadata = provenance.get("tools", {}).get("NeoXtractor") or differential.get(
+        "NeoXtractor", {}
+    ).get("tool_metadata")
+    neox_tools_metadata = provenance.get("tools", {}).get("neox_tools") or differential.get(
+        "neox_tools", {}
+    ).get("tool_metadata")
     oracle_gate = differential.get("gate") or differential.get("comparison")
     resolver = {
         "schema_version": 1,
@@ -1226,7 +1286,10 @@ def _build_publication_manifests(
                 "path": str(run_root / "type-classification.json"),
                 "sha256": sha256_file(run_root / "type-classification.json"),
             },
-            "differential": {"path": str(differential_path), "sha256": sha256_file(differential_path)},
+            "differential": {
+                "path": str(differential_path),
+                "sha256": sha256_file(differential_path),
+            },
         },
         "models": outputs,
         "textures": list(texture_outputs.values()),
@@ -1255,7 +1318,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         run_root, catalog_roots, output, source_tree, runtime_metadata = _runtime_context(args)
-        material_overrides_path, material_overrides = load_material_overrides(args.material_overrides)
+        material_overrides_path, material_overrides = load_material_overrides(
+            args.material_overrides
+        )
         inputs = _load_publication_inputs(
             source_tree=source_tree,
             catalog_roots=catalog_roots,
@@ -1293,6 +1358,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ImportError, OSError, PublicationError, ValueError) as exc:
         print(f"textured publication failed: {exc}", file=sys.stderr)
         return 2
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

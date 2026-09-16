@@ -47,8 +47,13 @@ class RunPilotBoundaryTests(unittest.TestCase):
             config.write_text("{}", encoding="utf-8")
             original_path = list(MODULE.sys.path)
             original_cwd = Path.cwd()
-            with patch.object(MODULE, "tool_version", return_value={}), patch.object(
-                MODULE.importlib, "import_module", side_effect=RuntimeError("upstream import failed")
+            with (
+                patch.object(MODULE, "tool_version", return_value={}),
+                patch.object(
+                    MODULE.importlib,
+                    "import_module",
+                    side_effect=RuntimeError("upstream import failed"),
+                ),
             ):
                 result = MODULE.run_neox(source, root / "neox", _index(), root, config)
             self.assertEqual(MODULE.sys.path, original_path)
@@ -67,8 +72,9 @@ class RunPilotBoundaryTests(unittest.TestCase):
                 raise RuntimeError("upstream unpack failed")
 
             upstream = SimpleNamespace(unpack=fail_unpack)
-            with patch.object(MODULE, "tool_version", return_value={}), patch.object(
-                MODULE.importlib, "import_module", return_value=upstream
+            with (
+                patch.object(MODULE, "tool_version", return_value={}),
+                patch.object(MODULE.importlib, "import_module", return_value=upstream),
             ):
                 result = MODULE.run_neox_tools(source, root / "neox-tools", _index(), root)
             self.assertEqual(MODULE.sys.path, original_path)

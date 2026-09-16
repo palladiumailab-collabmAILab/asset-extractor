@@ -84,13 +84,31 @@ def verify_sources(rows: list[dict[str, Any]], phase: str) -> dict[str, Any]:
             result["actual_sha256"] = sha256_file(path)
             result["size_match"] = result["actual_size"] == row["expected_size"]
             result["sha256_match"] = result["actual_sha256"] == row["expected_sha256"]
-            result["status"] = "ok" if result["size_match"] and result["sha256_match"] else "mismatch"
+            result["status"] = (
+                "ok" if result["size_match"] and result["sha256_match"] else "mismatch"
+            )
         except OSError as exc:
-            result.update({"actual_size": None, "actual_sha256": None, "size_match": False, "sha256_match": False, "status": "error", "error": str(exc)})
+            result.update(
+                {
+                    "actual_size": None,
+                    "actual_sha256": None,
+                    "size_match": False,
+                    "sha256_match": False,
+                    "status": "error",
+                    "error": str(exc),
+                }
+            )
         results.append(result)
         if result["status"] != "ok":
             failures.append(result)
-    return {"schema_version": 1, "phase": phase, "status": "ok" if not failures else "failed", "count": len(results), "failures": failures, "files": results}
+    return {
+        "schema_version": 1,
+        "phase": phase,
+        "status": "ok" if not failures else "failed",
+        "count": len(results),
+        "failures": failures,
+        "files": results,
+    }
 
 
 def parse_index(source: Path) -> dict[str, Any]:
@@ -121,7 +139,9 @@ def parse_index(source: Path) -> dict[str, Any]:
             raw = handle.read(info_size)
             if len(raw) != info_size:
                 raise RuntimeError(f"truncated index at ordinal {ordinal}")
-            payload_id, unknown, offset, packed, unpacked, hash1, hash2, flags = struct.unpack("<8I", raw)
+            payload_id, unknown, offset, packed, unpacked, hash1, hash2, flags = struct.unpack(
+                "<8I", raw
+            )
             if offset < 24 or offset > size or packed > size - offset:
                 raise RuntimeError(f"entry {ordinal} payload is outside source bounds")
             if packed > MAX_ENTRY_BYTES or unpacked > MAX_ENTRY_BYTES:
@@ -175,7 +195,16 @@ def magic_type(path: Path) -> str:
     )
 
 
-def output_row(base: dict[str, Any], tool: str, tool_meta: dict[str, Any], status: str, output: Path | None = None, error: str | None = None, name: str | None = None, transforms: list[str] | None = None) -> dict[str, Any]:
+def output_row(
+    base: dict[str, Any],
+    tool: str,
+    tool_meta: dict[str, Any],
+    status: str,
+    output: Path | None = None,
+    error: str | None = None,
+    name: str | None = None,
+    transforms: list[str] | None = None,
+) -> dict[str, Any]:
     row = {
         "tool": tool,
         "tool_metadata": tool_meta,
@@ -196,7 +225,11 @@ def output_row(base: dict[str, Any], tool: str, tool_meta: dict[str, Any], statu
         "detected_type": magic_type(output) if output and output.exists() else None,
         "transforms": transforms or [],
         "bounds_checked": base.get("bounds_checked", True),
-        "size_checked": bool(output and output.exists() and output.stat().st_size == base["declared_unpacked_bytes"]) if status == "ok" else False,
+        "size_checked": bool(
+            output and output.exists() and output.stat().st_size == base["declared_unpacked_bytes"]
+        )
+        if status == "ok"
+        else False,
     }
     return row
 
@@ -204,9 +237,15 @@ def output_row(base: dict[str, Any], tool: str, tool_meta: dict[str, Any], statu
 def tool_version(repo: Path) -> dict[str, Any]:
     import subprocess
 
-    commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
-    tree = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"], text=True).strip()
-    tracked = subprocess.check_output(["git", "-C", str(repo), "ls-files", "-s"], text=True).encode()
+    commit = subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+    tree = subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"], text=True
+    ).strip()
+    tracked = subprocess.check_output(
+        ["git", "-C", str(repo), "ls-files", "-s"], text=True
+    ).encode()
     diff = subprocess.check_output(["git", "-C", str(repo), "diff", "--no-ext-diff", "--binary"])
     return {
         "repository": str(repo),
@@ -218,7 +257,9 @@ def tool_version(repo: Path) -> dict[str, Any]:
     }
 
 
-def run_neox(source: Path, destination: Path, index: dict[str, Any], repo: Path, config: Path) -> dict[str, Any]:
+def run_neox(
+    source: Path, destination: Path, index: dict[str, Any], repo: Path, config: Path
+) -> dict[str, Any]:
     fresh_dir(destination)
     tool_meta = tool_version(repo)
     tool_meta["config_path"] = str(config)
@@ -232,7 +273,9 @@ def run_neox(source: Path, destination: Path, index: dict[str, Any], repo: Path,
         class_types = importlib.import_module("core.npk.class_types")
         archive = npk_file.NPKFile(str(source), class_types.NPKReadOptions(decryption_key=150))
         if archive.file_count != index["entry_count"] or archive.info_size != index["index_size"]:
-            raise RuntimeError(f"NeoXtractor header/index mismatch: {archive.file_count}/{archive.info_size}")
+            raise RuntimeError(
+                f"NeoXtractor header/index mismatch: {archive.file_count}/{archive.info_size}"
+            )
         with source.open("rb") as handle:
             for base, upstream_index in zip(index["entries"], archive.indices):
                 target = destination / f"{base['ordinal']:07d}_{base['payload_id']:08x}.bin"
@@ -249,11 +292,30 @@ def run_neox(source: Path, destination: Path, index: dict[str, Any], repo: Path,
                         raise RuntimeError(f"unsafe or existing NeoXtractor destination: {target}")
                     entry.save_to_file(str(target), decoded=True)
                     transforms = list(getattr(entry, "unwrap_layers", []) or [])
-                    rows.append(output_row(base, "NeoXtractor", tool_meta, "ok", target, name=getattr(entry, "filename", None), transforms=transforms))
+                    rows.append(
+                        output_row(
+                            base,
+                            "NeoXtractor",
+                            tool_meta,
+                            "ok",
+                            target,
+                            name=getattr(entry, "filename", None),
+                            transforms=transforms,
+                        )
+                    )
                 except Exception as exc:  # retain one row per observed entry
-                    rows.append(output_row(base, "NeoXtractor", tool_meta, "failed", error=repr(exc), name=getattr(upstream_index, "filename", None)))
+                    rows.append(
+                        output_row(
+                            base,
+                            "NeoXtractor",
+                            tool_meta,
+                            "failed",
+                            error=repr(exc),
+                            name=getattr(upstream_index, "filename", None),
+                        )
+                    )
     except Exception as exc:
-        for base in index["entries"][len(rows):]:
+        for base in index["entries"][len(rows) :]:
             rows.append(output_row(base, "NeoXtractor", tool_meta, "failed", error=repr(exc)))
     finally:
         # Upstream imports may mutate sys.path themselves. Restore the exact
@@ -269,14 +331,18 @@ def run_neox(source: Path, destination: Path, index: dict[str, Any], repo: Path,
     }
 
 
-def run_neox_tools(source: Path, destination: Path, index: dict[str, Any], repo: Path) -> dict[str, Any]:
+def run_neox_tools(
+    source: Path, destination: Path, index: dict[str, Any], repo: Path
+) -> dict[str, Any]:
     fresh_dir(destination)
     tool_meta = tool_version(repo)
     started = time.time()
     copied_input = destination / "input" / source.name
     copied_input.parent.mkdir(parents=True, exist_ok=False)
     shutil.copyfile(source, copied_input)
-    if copied_input.stat().st_size != source.stat().st_size or sha256_file(copied_input) != sha256_file(source):
+    if copied_input.stat().st_size != source.stat().st_size or sha256_file(
+        copied_input
+    ) != sha256_file(source):
         raise RuntimeError("neox_tools input copy did not hash-match source")
     original_sys_path = sys.path.copy()
     sys.path.insert(0, str(repo))
@@ -305,11 +371,19 @@ def run_neox_tools(source: Path, destination: Path, index: dict[str, Any], repo:
         for base in index["entries"]:
             path = by_ordinal.get(base["ordinal"])
             if path is None:
-                rows.append(output_row(base, "neox_tools", tool_meta, "failed", error="upstream extractor produced no output"))
+                rows.append(
+                    output_row(
+                        base,
+                        "neox_tools",
+                        tool_meta,
+                        "failed",
+                        error="upstream extractor produced no output",
+                    )
+                )
             else:
                 rows.append(output_row(base, "neox_tools", tool_meta, "ok", path, name=path.name))
     except Exception as exc:
-        for base in index["entries"][len(rows):]:
+        for base in index["entries"][len(rows) :]:
             rows.append(output_row(base, "neox_tools", tool_meta, "failed", error=repr(exc)))
     finally:
         os.chdir(old_cwd)
@@ -326,7 +400,9 @@ def run_neox_tools(source: Path, destination: Path, index: dict[str, Any], repo:
     }
 
 
-def run_maintained(source: Path, destination: Path, index: dict[str, Any], repo: Path) -> dict[str, Any]:
+def run_maintained(
+    source: Path, destination: Path, index: dict[str, Any], repo: Path
+) -> dict[str, Any]:
     if destination.exists():
         raise RuntimeError(f"maintained parser destination already exists: {destination}")
     started = time.time()
@@ -341,18 +417,51 @@ def run_maintained(source: Path, destination: Path, index: dict[str, Any], repo:
             [str(source)],
             destination,
             profile="nxpk",
-            limits=dict(DEFAULT_LIMITS, max_member_bytes=MAX_ENTRY_BYTES, max_total_bytes=MAX_TOTAL_BYTES, max_ratio=MAX_RATIO),
+            limits=dict(
+                DEFAULT_LIMITS,
+                max_member_bytes=MAX_ENTRY_BYTES,
+                max_total_bytes=MAX_TOTAL_BYTES,
+                max_ratio=MAX_RATIO,
+            ),
         )
         rows: list[dict[str, Any]] = []
-        by_index = {int(item["index"]): item for item in manifest.get("entries", []) if item.get("index") is not None}
-        tool_meta = {"repository": str(repo), "version": "asset-extractor-0.2.0", "source_tree_sha256": sha256_json(sorted(str(p.relative_to(repo)) for p in repo.rglob("*.py")))}
+        by_index = {
+            int(item["index"]): item
+            for item in manifest.get("entries", [])
+            if item.get("index") is not None
+        }
+        tool_meta = {
+            "repository": str(repo),
+            "version": "asset-extractor-0.2.0",
+            "source_tree_sha256": sha256_json(
+                sorted(str(p.relative_to(repo)) for p in repo.rglob("*.py"))
+            ),
+        }
         for base in index["entries"]:
             item = by_index.get(base["ordinal"])
             if item is None:
-                rows.append(output_row(base, "maintained-parser", tool_meta, "failed", error="maintained parser produced no entry"))
+                rows.append(
+                    output_row(
+                        base,
+                        "maintained-parser",
+                        tool_meta,
+                        "failed",
+                        error="maintained parser produced no entry",
+                    )
+                )
                 continue
             path = destination / "extracted" / f"001-{source.stem}" / item["path"]
-            rows.append(output_row(base, "maintained-parser", tool_meta, item["status"], path if item["status"] == "ok" else None, error=None if item["status"] == "ok" else item.get("error"), name=item["path"]))
+            rows.append(
+                output_row(
+                    base,
+                    "maintained-parser",
+                    tool_meta,
+                    item["status"],
+                    path if item["status"] == "ok" else None,
+                    error=None if item["status"] == "ok" else item.get("error"),
+                    name=item["path"],
+                )
+            )
         return {
             "tool": "maintained-parser",
             "tool_metadata": tool_meta,
@@ -366,23 +475,29 @@ def run_maintained(source: Path, destination: Path, index: dict[str, Any], repo:
         sys.path[:] = original_sys_path
 
 
-def flatten_results(results: dict[str, dict[str, Any]], source: dict[str, Any], run_id: str, index: dict[str, Any]) -> list[dict[str, Any]]:
+def flatten_results(
+    results: dict[str, dict[str, Any]], source: dict[str, Any], run_id: str, index: dict[str, Any]
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for tool_name, result in results.items():
         for item in result["entries"]:
-            rows.append({
-                "schema_version": 1,
-                "run_id": run_id,
-                "source": source,
-                "tool": item["tool"],
-                "tool_metadata": item["tool_metadata"],
-                "entry": item,
-            })
+            rows.append(
+                {
+                    "schema_version": 1,
+                    "run_id": run_id,
+                    "source": source,
+                    "tool": item["tool"],
+                    "tool_metadata": item["tool_metadata"],
+                    "entry": item,
+                }
+            )
     return rows
 
 
 def differential(results: dict[str, dict[str, Any]], index: dict[str, Any]) -> dict[str, Any]:
-    by_tool = {name: {row["ordinal"]: row for row in result["entries"]} for name, result in results.items()}
+    by_tool = {
+        name: {row["ordinal"]: row for row in result["entries"]} for name, result in results.items()
+    }
     names = list(by_tool)
     comparisons: list[dict[str, Any]] = []
     categories = Counter()
@@ -403,7 +518,9 @@ def differential(results: dict[str, dict[str, Any]], index: dict[str, Any]) -> d
         )
         two_boundary = max(boundary_groups.values(), default=0) >= 2
         two_payload = max(payload_groups.values(), default=0) >= 2
-        all_success = len(present) == len(names) and all(row.get("status") == "ok" for row in rows.values())
+        all_success = len(present) == len(names) and all(
+            row.get("status") == "ok" for row in rows.values()
+        )
         name_groups = Counter(
             row.get("name")
             for row in rows.values()
@@ -412,7 +529,9 @@ def differential(results: dict[str, dict[str, Any]], index: dict[str, Any]) -> d
         name_difference = len(name_groups) > 1
         if name_difference:
             difference_counts["naming"] += 1
-        if not all_success and any(row is not None and row.get("status") == "ok" for row in rows.values()):
+        if not all_success and any(
+            row is not None and row.get("status") == "ok" for row in rows.values()
+        ):
             difference_counts["one_sided_success"] += 1
         if len(boundary_groups) > 1:
             difference_counts["boundary"] += 1
@@ -427,18 +546,26 @@ def differential(results: dict[str, dict[str, Any]], index: dict[str, Any]) -> d
         else:
             status = "discrepancy"
             categories["discrepancy"] += 1
-        comparisons.append({
-            "ordinal": ordinal,
-            "payload_id": base["payload_id"],
-            "status": status,
-            "tools": rows,
-            "boundary_groups": [{"key": list(key), "count": count} for key, count in boundary_groups.items()],
-            "successful_payload_groups": [{"key": list(key), "count": count} for key, count in payload_groups.items()],
-            "name_groups": [{"name": key, "count": count} for key, count in name_groups.items()],
-            "name_difference": name_difference,
-            "two_or_more_boundary_agreement": two_boundary,
-            "two_or_more_payload_agreement": two_payload,
-        })
+        comparisons.append(
+            {
+                "ordinal": ordinal,
+                "payload_id": base["payload_id"],
+                "status": status,
+                "tools": rows,
+                "boundary_groups": [
+                    {"key": list(key), "count": count} for key, count in boundary_groups.items()
+                ],
+                "successful_payload_groups": [
+                    {"key": list(key), "count": count} for key, count in payload_groups.items()
+                ],
+                "name_groups": [
+                    {"name": key, "count": count} for key, count in name_groups.items()
+                ],
+                "name_difference": name_difference,
+                "two_or_more_boundary_agreement": two_boundary,
+                "two_or_more_payload_agreement": two_payload,
+            }
+        )
     accepted = categories["agreement_all"] + categories["agreement_two_or_more"]
     return {
         "schema_version": 1,
@@ -455,7 +582,12 @@ def differential(results: dict[str, dict[str, Any]], index: dict[str, Any]) -> d
     }
 
 
-def markdown_report(report: dict[str, Any], source: dict[str, Any], index: dict[str, Any], results: dict[str, dict[str, Any]]) -> str:
+def markdown_report(
+    report: dict[str, Any],
+    source: dict[str, Any],
+    index: dict[str, Any],
+    results: dict[str, dict[str, Any]],
+) -> str:
     lines = [
         "# Onmyoji qmodel_2409 pilot differential report",
         "",
@@ -471,8 +603,19 @@ def markdown_report(report: dict[str, Any], source: dict[str, Any], index: dict[
     for name, result in results.items():
         meta = result["tool_metadata"]
         ident = meta.get("commit", meta.get("version", "unknown"))
-        lines.append(f"| {name} | `{ident}` | {result['entry_count']} | `{result['status_counts']}` |")
-    lines += ["", "## Gate", "", f"- Status counts: `{report['status_counts']}`", f"- Difference counts: `{report.get('difference_counts', {})}`", f"- All-three agreement: `{report['gate']['all_three_agree']}`", "- Naming differences are reported separately from payload/boundary agreement; no unmatched result is guessed or merged.", ""]
+        lines.append(
+            f"| {name} | `{ident}` | {result['entry_count']} | `{result['status_counts']}` |"
+        )
+    lines += [
+        "",
+        "## Gate",
+        "",
+        f"- Status counts: `{report['status_counts']}`",
+        f"- Difference counts: `{report.get('difference_counts', {})}`",
+        f"- All-three agreement: `{report['gate']['all_three_agree']}`",
+        "- Naming differences are reported separately from payload/boundary agreement; no unmatched result is guessed or merged.",
+        "",
+    ]
     return "\n".join(lines)
 
 
@@ -500,9 +643,19 @@ def main() -> int:
     write_json(args.run_root / "pilot-index.json", index)
 
     results: dict[str, dict[str, Any]] = {}
-    results["NeoXtractor"] = run_neox(source, args.run_root / "NeoXtractor", index, args.neox_root.resolve(), args.neox_config.resolve())
-    results["neox_tools"] = run_neox_tools(source, args.run_root / "neox_tools", index, args.neox_tools_root.resolve())
-    results["maintained-parser"] = run_maintained(source, args.run_root / "maintained-parser", index, Path(__file__).resolve().parent)
+    results["NeoXtractor"] = run_neox(
+        source,
+        args.run_root / "NeoXtractor",
+        index,
+        args.neox_root.resolve(),
+        args.neox_config.resolve(),
+    )
+    results["neox_tools"] = run_neox_tools(
+        source, args.run_root / "neox_tools", index, args.neox_tools_root.resolve()
+    )
+    results["maintained-parser"] = run_maintained(
+        source, args.run_root / "maintained-parser", index, Path(__file__).resolve().parent
+    )
     write_json(args.run_root / "tool-results.json", results)
 
     source_info = next(row for row in rows if Path(row["path"]).resolve() == source)
@@ -510,7 +663,9 @@ def main() -> int:
     write_json(args.run_root / "normalized-inventory.json", normalized)
     diff = differential(results, index)
     write_json(args.run_root / "differential.json", diff)
-    (args.run_root / "differential.md").write_text(markdown_report(diff, source_info, index, results), encoding="utf-8")
+    (args.run_root / "differential.md").write_text(
+        markdown_report(diff, source_info, index, results), encoding="utf-8"
+    )
 
     post = verify_sources(rows, "post")
     write_json(args.run_root / "source-verification-post.json", post)
@@ -522,13 +677,36 @@ def main() -> int:
         "created_at_epoch": time.time(),
         "source": source_info,
         "pilot_index": {key: value for key, value in index.items() if key != "entries"},
-        "tools": {name: {key: value for key, value in result.items() if key != "entries"} for name, result in results.items()},
-        "source_verification": {"pre": str(args.run_root / "source-verification-pre.json"), "post": str(args.run_root / "source-verification-post.json")},
+        "tools": {
+            name: {key: value for key, value in result.items() if key != "entries"}
+            for name, result in results.items()
+        },
+        "source_verification": {
+            "pre": str(args.run_root / "source-verification-pre.json"),
+            "post": str(args.run_root / "source-verification-post.json"),
+        },
         "differential": str(args.run_root / "differential.json"),
-        "safety": {"max_entry_bytes": MAX_ENTRY_BYTES, "max_total_bytes": MAX_TOTAL_BYTES, "max_ratio": MAX_RATIO, "canonical_read_only": True, "extracted_payloads_executed": False},
+        "safety": {
+            "max_entry_bytes": MAX_ENTRY_BYTES,
+            "max_total_bytes": MAX_TOTAL_BYTES,
+            "max_ratio": MAX_RATIO,
+            "canonical_read_only": True,
+            "extracted_payloads_executed": False,
+        },
     }
     write_json(args.run_root / "run-manifest.json", run_manifest)
-    print(json.dumps({"run_root": str(args.run_root), "index": index["entry_count"], "tools": {name: result["status_counts"] for name, result in results.items()}, "differential": diff["status_counts"], "source_post": post["status"]}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "run_root": str(args.run_root),
+                "index": index["entry_count"],
+                "tools": {name: result["status_counts"] for name, result in results.items()},
+                "differential": diff["status_counts"],
+                "source_post": post["status"],
+            },
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 
