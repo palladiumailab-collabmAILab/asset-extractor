@@ -29,6 +29,8 @@ function Invoke-PythonValidation {
     Invoke-Checked 'skill validation' { python scripts/validate-skills.py skills }
     Invoke-Checked 'asset extractor tests' { coverage run --branch --source=asset_extractor -m unittest discover -s development/tests -t . }
     Invoke-Checked 'coverage threshold' { coverage report --fail-under=55 }
+    Invoke-Checked 'coverage JSON' { coverage json -o coverage.json }
+    Invoke-Checked 'critical coverage baseline' { python scripts/check-critical-coverage.py coverage.json }
     Invoke-Checked 'Ruff lint' { ruff check programs scripts development/tests }
     Invoke-Checked 'Ruff format' { ruff format --check programs scripts development/tests }
     Invoke-Checked 'mypy' { mypy }
