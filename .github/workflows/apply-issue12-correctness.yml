@@ -23,6 +23,11 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          from textwrap import dedent, indent
+
+          def block(value: str, spaces: int = 0) -> str:
+              value = dedent(value).lstrip("\n")
+              return indent(value, " " * spaces) if spaces else value
 
           orchestrator = Path("programs/src/asset_extractor/orchestrator.py")
           text = orchestrator.read_text(encoding="utf-8")
@@ -32,13 +37,15 @@ jobs:
               raise SystemExit("unexpected orchestrator typing import")
           text = text.replace(old_import, new_import, 1)
 
-          old_result = '''def _result(status: str, manifest: Path | None = None, **fields: Any) -> dict[str, Any]:
+          old_result = block('''
+          def _result(status: str, manifest: Path | None = None, **fields: Any) -> dict[str, Any]:
               result: dict[str, Any] = {"status": status, **fields}
               if manifest is not None:
                   result["manifest"] = str(manifest.resolve())
               return result
-          '''
-          new_result = '''StageStatus = Literal["complete", "partial", "failed", "skipped", "blocked"]
+          ''')
+          new_result = block('''
+          StageStatus = Literal["complete", "partial", "failed", "skipped", "blocked"]
           _STAGE_STATUS_VALUES = {"complete", "partial", "failed", "skipped", "blocked"}
           _PIPELINE_STAGE_ORDER = (
               "acquisition",
@@ -98,10 +105,19 @@ jobs:
               if any(status == "partial" for status in statuses):
                   return "partial"
               return "complete"
-          '''
+          ''')
           if text.count(old_result) != 1:
               raise SystemExit(f"unexpected _result implementation: {text.count(old_result)} matches")
           text = text.replace(old_result, new_result, 1)
+          for old, new in (
+              (") -> tuple[list[Path], dict[str, Any]]:", ") -> tuple[list[Path], StageResult]:"),
+              (") -> dict[str, Any]:\n    source_tree = _path(config.get(\"source_tree\")", ") -> StageResult:\n    source_tree = _path(config.get(\"source_tree\")"),
+              ("run_root: Path, textured: dict[str, Any]\n) -> tuple[dict[str, Any], list[Path]]:", "run_root: Path, textured: StageResult\n) -> tuple[StageResult, list[Path]]:"),
+              ("def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -> dict[str, Any]:", "def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -> StageResult:"),
+          ):
+              if text.count(old) != 1:
+                  raise SystemExit(f"unexpected stage helper annotation: {old!r}")
+              text = text.replace(old, new, 1)
 
           old_textured_status = 'return _result(str(document.get("status", "failed")), manifest, returncode=completed.returncode)'
           new_textured_status = 'return _result(_stage_status(document.get("status")), manifest, returncode=completed.returncode)'
@@ -113,7 +129,7 @@ jobs:
           if text.count(marker) != 1:
               raise SystemExit("unexpected run_pipeline marker")
           prefix = text.split(marker, 1)[0]
-          new_run = '''
+          new_run = block('''
           def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
               config_path = config_path.resolve()
               output = output.resolve()
@@ -258,15 +274,13 @@ jobs:
               }
               atomic_write_json(output / "pipeline-manifest.json", manifest)
               return manifest
-          '''
-          # The YAML block indentation is removed before Python sees this file; remove
-          # only the indentation intentionally used to make the multiline string readable.
-          new_run = "\n".join(line[10:] if line.startswith("          ") else line for line in new_run.splitlines())
-          orchestrator.write_text(prefix + "\n" + new_run.lstrip("\n") + "\n", encoding="utf-8")
+          ''')
+          orchestrator.write_text(prefix + "\n" + new_run + "\n", encoding="utf-8")
 
           backends = Path("programs/src/asset_extractor/backends.py")
           text = backends.read_text(encoding="utf-8")
-          old = '''        completed = subprocess.run(
+          old = block('''
+          completed = subprocess.run(
               self._command(request),
               check=False,
               capture_output=True,
@@ -275,8 +289,9 @@ jobs:
               errors="replace",
               timeout=self.timeout_seconds,
           )
-          '''
-          new = '''        command = self._command(request)
+          ''', 8)
+          new = block('''
+          command = self._command(request)
           try:
               completed = subprocess.run(
                   command,
@@ -302,7 +317,7 @@ jobs:
                   f"timeout_seconds={self.timeout_seconds} "
                   f"stdout={bounded(exc.stdout)!r} stderr={bounded(exc.stderr)!r}"
               ) from exc
-          '''
+          ''', 8)
           if text.count(old) != 1:
               raise SystemExit(f"unexpected DedicatedBackend subprocess block: {text.count(old)} matches")
           backends.write_text(text.replace(old, new, 1), encoding="utf-8")
@@ -322,7 +337,8 @@ jobs:
               raise SystemExit(f"unexpected pipeline status assertion: {text.count(old_assert)} matches")
           text = text.replace(old_assert, '            self.assertEqual(manifest["status"], "complete")\n', 1)
           anchor = '    def test_pipeline_does_not_overwrite_a_previous_run(self) -> None:\n'
-          addition = '''    def test_minimal_pipeline_skips_optional_stages_without_degrading_status(self) -> None:
+          addition = block('''
+          def test_minimal_pipeline_skips_optional_stages_without_degrading_status(self) -> None:
               with tempfile.TemporaryDirectory() as temporary:
                   root = Path(temporary)
                   source = root / "source.zip"
@@ -341,15 +357,7 @@ jobs:
               for name in ("acquisition", "extraction", "classification"):
                   self.assertTrue(manifest["stages"][name]["required"])
 
-              def unused(self):
-                  pass
-
-              def unused_two(self):
-                  pass
-
-          '''
-          addition = addition.replace('        def unused(self):\n            pass\n\n        def unused_two(self):\n            pass\n\n', '')
-          addition += '''    def test_extraction_failure_blocks_configured_downstream_stages(self) -> None:
+          def test_extraction_failure_blocks_configured_downstream_stages(self) -> None:
               with tempfile.TemporaryDirectory() as temporary:
                   root = Path(temporary)
                   source = root / "source.npk"
@@ -384,7 +392,7 @@ jobs:
                   self.assertEqual(manifest["stages"][name]["status"], "blocked")
                   self.assertTrue(manifest["stages"][name]["required"])
 
-          '''
+          ''', 4)
           if text.count(anchor) != 1:
               raise SystemExit("unexpected orchestrator test insertion point")
           tests.write_text(text.replace(anchor, addition + anchor, 1), encoding="utf-8")
@@ -404,7 +412,8 @@ jobs:
               1,
           )
           anchor = '    def test_extract_cli_exposes_backend_selection(self) -> None:\n'
-          addition = '''    def test_dedicated_adapter_converts_timeout_to_domain_error(self) -> None:
+          addition = block('''
+          def test_dedicated_adapter_converts_timeout_to_domain_error(self) -> None:
               with tempfile.TemporaryDirectory() as temporary:
                   root = Path(temporary)
                   source = root / "sample.npk"
@@ -430,7 +439,7 @@ jobs:
               self.assertIn("partial stdout", message)
               self.assertIn("partial stderr", message)
 
-          '''
+          ''', 4)
           if text.count(anchor) != 1:
               raise SystemExit("unexpected backend test insertion point")
           backend_tests.write_text(text.replace(anchor, addition + anchor, 1), encoding="utf-8")
