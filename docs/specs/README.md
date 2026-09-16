@@ -27,6 +27,8 @@ Every extraction or restoration run must:
 - distinguish `complete`, `partial`, and `failed` rather than converting unresolved or best-effort results into success;
 - preserve the documented exit-code semantics of each maintained CLI/run type;
 - fail closed when required evaluation is unresolved or input/output integrity cannot be established.
+- treat omitted optional pipeline stages as `skipped` without degrading the overall run; once an optional stage is configured, it is required for that run;
+- report a required upstream failure as `failed`, mark dependent required stages `blocked`, and never convert required `partial`/`failed`/`blocked` work into `complete`.
 
 ## Executable contracts
 
