@@ -19,9 +19,7 @@ def _coverage_document(overrides: dict[str, int] | None = None) -> dict[str, obj
     values.update(overrides or {})
     return {
         "files": {
-            f"/site-packages/{module}": {
-                "summary": {"percent_covered_display": str(percent)}
-            }
+            f"/site-packages/{module}": {"summary": {"percent_covered_display": str(percent)}}
             for module, percent in values.items()
         }
     }

@@ -40,9 +40,7 @@ def check_coverage(document: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     for module, minimum in MINIMUM_DISPLAY_COVERAGE.items():
         matches = [
-            (path, entry)
-            for path, entry in files.items()
-            if _normalized(path).endswith(module)
+            (path, entry) for path, entry in files.items() if _normalized(path).endswith(module)
         ]
         if len(matches) != 1:
             failures.append(
@@ -60,9 +58,7 @@ def check_coverage(document: dict[str, Any]) -> list[str]:
             failures.append(f"invalid coverage summary for {path}: {exc}")
             continue
         if actual < minimum:
-            failures.append(
-                f"critical coverage regressed for {module}: {actual}% < {minimum}%"
-            )
+            failures.append(f"critical coverage regressed for {module}: {actual}% < {minimum}%")
     return failures
 
 
