@@ -1,0 +1,458 @@
+name: Apply Issue 12 correctness patch
+
+on:
+  push:
+    branches:
+      - codex/issue-12-correctness
+    paths:
+      - .github/workflows/apply-issue12-correctness.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: codex/issue-12-correctness
+          fetch-depth: 0
+      - name: Apply focused correctness changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected one match in {path}, found {text.count(old)}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          orchestrator = Path("programs/src/asset_extractor/orchestrator.py")
+          text = orchestrator.read_text(encoding="utf-8")
+          old_import = "from typing import Any, Iterable\n"
+          new_import = "from typing import Any, Iterable, Literal, Required, TypedDict, cast\n"
+          if text.count(old_import) != 1:
+              raise SystemExit("unexpected orchestrator typing import")
+          text = text.replace(old_import, new_import, 1)
+
+          old_result = '''def _result(status: str, manifest: Path | None = None, **fields: Any) -> dict[str, Any]:
+              result: dict[str, Any] = {"status": status, **fields}
+              if manifest is not None:
+                  result["manifest"] = str(manifest.resolve())
+              return result
+          '''.replace("          ", "")
+          new_result = '''StageStatus = Literal["complete", "partial", "failed", "skipped", "blocked"]
+          _STAGE_STATUS_VALUES = {"complete", "partial", "failed", "skipped", "blocked"}
+          _PIPELINE_STAGE_ORDER = (
+              "acquisition",
+              "extraction",
+              "classification",
+              "matching",
+              "textured",
+              "rendering",
+              "visual",
+          )
+
+
+          class StageResult(TypedDict, total=False):
+              status: Required[StageStatus]
+              required: bool
+              manifest: str
+              reason: str
+              message: str
+
+
+          def _stage_status(value: Any) -> StageStatus:
+              if isinstance(value, str) and value in _STAGE_STATUS_VALUES:
+                  return cast(StageStatus, value)
+              return "failed"
+
+
+          def _result(status: StageStatus, manifest: Path | None = None, **fields: Any) -> StageResult:
+              result: dict[str, Any] = {"status": status, **fields}
+              if manifest is not None:
+                  result["manifest"] = str(manifest.resolve())
+              return cast(StageResult, result)
+
+
+          def _required_stages(config: dict[str, Any]) -> set[str]:
+              required = {"acquisition", "extraction", "classification"}
+              if config.get("dictionary") is not None:
+                  required.add("matching")
+              if config.get("textured") is not None:
+                  required.update({"textured", "rendering"})
+              if config.get("references") is not None:
+                  required.add("visual")
+              return required
+
+
+          def _stage_usable(stage: StageResult) -> bool:
+              return stage.get("status") in {"complete", "partial"}
+
+
+          def _pipeline_status(
+              stages: dict[str, StageResult], required: set[str]
+          ) -> Literal["complete", "partial", "failed"]:
+              statuses = [stages[name]["status"] for name in required if name in stages]
+              if len(statuses) != len(required) or any(
+                  status in {"failed", "blocked", "skipped"} for status in statuses
+              ):
+                  return "failed"
+              if any(status == "partial" for status in statuses):
+                  return "partial"
+              return "complete"
+          '''.replace("          ", "")
+          if text.count(old_result) != 1:
+              raise SystemExit("unexpected _result implementation")
+          text = text.replace(old_result, new_result, 1)
+          text = text.replace(
+              'return _result(str(document.get("status", "failed")), manifest, returncode=completed.returncode)',
+              'return _result(_stage_status(document.get("status")), manifest, returncode=completed.returncode)',
+              1,
+          )
+
+          marker = "\ndef run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:\n"
+          if text.count(marker) != 1:
+              raise SystemExit("unexpected run_pipeline marker")
+          prefix = text.split(marker, 1)[0]
+          new_run = r'''
+          def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
+              config_path = config_path.resolve()
+              output = output.resolve()
+              if output.exists():
+                  raise PipelineError(f"pipeline output already exists: {output}")
+              config = _load_config(config_path)
+              output.mkdir(parents=True)
+              config_dir = config_path.parent
+              required = _required_stages(config)
+              stages: dict[str, StageResult] = {}
+              current_stage = "acquisition"
+              try:
+                  sources, acquisition = _source_paths(config, config_dir, output)
+                  stages["acquisition"] = acquisition
+
+                  current_stage = "extraction"
+                  extraction = _extract_sources(config, config_dir, sources, output / "extraction")
+                  extraction_manifest = next(
+                      (
+                          output / "extraction" / filename
+                          for filename in (
+                              "run-manifest.json",
+                              "backend-run-manifest.json",
+                              "backend-runs-manifest.json",
+                          )
+                          if (output / "extraction" / filename).is_file()
+                      ),
+                      output / "extraction" / "run-manifest.json",
+                  )
+                  stages["extraction"] = _result(
+                      _stage_status(extraction.get("status")),
+                      extraction_manifest,
+                      entries=len(extraction.get("entries", [])),
+                  )
+                  if not _stage_usable(stages["extraction"]):
+                      raise PipelineError("extraction stage did not produce usable outputs")
+
+                  _write_publication_inputs(output, extraction, extraction_manifest)
+                  current_stage = "classification"
+                  classification = classify_manifest_entries(
+                      run_root=output,
+                      source_manifest=extraction,
+                      output_manifest=output / "type-classification.json",
+                      raw_manifest=output / "raw-extraction-manifest.json",
+                      source_output_root=output / "extraction",
+                  )
+                  stages["classification"] = _result(
+                      _stage_status(classification.get("status")),
+                      output / "type-classification.json",
+                      counts=classification.get("counts", {}),
+                  )
+                  if not _stage_usable(stages["classification"]):
+                      raise PipelineError("classification stage did not produce usable outputs")
+
+                  _build_assets_manifest(classification, output / "assets.json")
+                  dictionary = config.get("dictionary")
+                  current_stage = "matching"
+                  if dictionary:
+                      dictionary_path = _path(dictionary, config_dir, "dictionary")
+                      match = build_match_manifest(dictionary_path, output / "assets.json")
+                      atomic_write_json(output / "match-manifest.json", match)
+                      stages["matching"] = _result(
+                          "complete", output / "match-manifest.json", summary=match["summary"]
+                      )
+                  else:
+                      stages["matching"] = _result("skipped", reason="no dictionary configured")
+
+                  textured_config = config.get("textured")
+                  current_stage = "textured"
+                  if textured_config is not None:
+                      if not isinstance(textured_config, dict):
+                          raise PipelineError("textured must be an object")
+                      stages["textured"] = _run_textured_stage(output, config_dir, textured_config)
+                  else:
+                      stages["textured"] = _result(
+                          "skipped", reason="no NeoX publication configuration"
+                      )
+
+                  current_stage = "rendering"
+                  if textured_config is None:
+                      stages["rendering"] = _result(
+                          "skipped", reason="no textured stage configured"
+                      )
+                      rendered: list[Path] = []
+                  elif _stage_usable(stages["textured"]):
+                      stages["rendering"], rendered = _run_render_stage(
+                          output, stages["textured"]
+                      )
+                  else:
+                      stages["rendering"] = _result(
+                          "blocked", reason="textured stage did not produce usable outputs"
+                      )
+                      rendered = []
+
+                  current_stage = "visual"
+                  references = config.get("references")
+                  if references is None:
+                      stages["visual"] = _result(
+                          "skipped", reason="no reference images configured"
+                      )
+                  elif textured_config is not None and not _stage_usable(stages["rendering"]):
+                      stages["visual"] = _result(
+                          "blocked", reason="rendering stage did not produce usable candidates"
+                      )
+                  else:
+                      stages["visual"] = _run_visual_stage(references, config_dir, rendered)
+
+                  status = _pipeline_status(stages, required)
+              except (OSError, PipelineError, ExtractionError, ValueError, json.JSONDecodeError) as exc:
+                  if current_stage not in stages:
+                      stages[current_stage] = _result("failed", message=str(exc))
+                  for name in _PIPELINE_STAGE_ORDER:
+                      if name in stages:
+                          continue
+                      if name in required:
+                          stages[name] = _result(
+                              "blocked", reason="pipeline aborted before this required stage"
+                          )
+                      else:
+                          stages[name] = _result(
+                              "skipped", reason="pipeline aborted before this optional stage"
+                          )
+                  stages["error"] = _result("failed", message=str(exc))
+                  status = "failed"
+
+              for name in _PIPELINE_STAGE_ORDER:
+                  stages[name]["required"] = name in required
+
+              manifest = {
+                  "schema_version": 1,
+                  "operation": "asset-extraction-pipeline",
+                  "created_at": utc_now(),
+                  "status": status,
+                  "config": {"path": str(config_path), "sha256": sha256_file(config_path)},
+                  "tool": tool_metadata(),
+                  "stages": stages,
+                  "policy": {
+                      "raw_inputs_read_only": True,
+                      "reference_images_rank_candidates_only": True,
+                      "ambiguous_results_remain_unresolved": True,
+                  },
+              }
+              atomic_write_json(output / "pipeline-manifest.json", manifest)
+              return manifest
+          '''.replace("          ", "")
+          orchestrator.write_text(prefix + "\n" + new_run.lstrip("\n"), encoding="utf-8")
+
+          backends = Path("programs/src/asset_extractor/backends.py")
+          text = backends.read_text(encoding="utf-8")
+          old = '''        completed = subprocess.run(
+                      self._command(request),
+                      check=False,
+                      capture_output=True,
+                      text=True,
+                      encoding="utf-8",
+                      errors="replace",
+                      timeout=self.timeout_seconds,
+                  )
+          '''.replace("          ", "")
+          new = '''        command = self._command(request)
+                  try:
+                      completed = subprocess.run(
+                          command,
+                          check=False,
+                          capture_output=True,
+                          text=True,
+                          encoding="utf-8",
+                          errors="replace",
+                          timeout=self.timeout_seconds,
+                      )
+                  except subprocess.TimeoutExpired as exc:
+                      def bounded(value: str | bytes | None) -> str:
+                          if value is None:
+                              return ""
+                          if isinstance(value, bytes):
+                              value = value.decode("utf-8", errors="replace")
+                          return value.strip()[:500]
+
+                      source = str(request.source_paths[0].resolve())
+                      raise ExtractionError(
+                          "dedicated backend timed out: "
+                          f"backend={request.backend} source={source} "
+                          f"timeout_seconds={self.timeout_seconds} "
+                          f"stdout={bounded(exc.stdout)!r} stderr={bounded(exc.stderr)!r}"
+                      ) from exc
+          '''.replace("          ", "")
+          if text.count(old) != 1:
+              raise SystemExit("unexpected DedicatedBackend subprocess block")
+          backends.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          tests = Path("development/tests/test_orchestrator.py")
+          text = tests.read_text(encoding="utf-8")
+          text = text.replace(
+              'from asset_extractor.classification import classify_manifest_entries  # noqa: E402\n',
+              'from asset_extractor.classification import classify_manifest_entries  # noqa: E402\nfrom asset_extractor.errors import ExtractionError  # noqa: E402\n',
+              1,
+          )
+          old_assert = '            self.assertEqual(manifest["status"], "partial")\n'
+          if text.count(old_assert) != 1:
+              raise SystemExit("unexpected pipeline status assertion")
+          text = text.replace(old_assert, '            self.assertEqual(manifest["status"], "complete")\n', 1)
+          anchor = '''    def test_pipeline_does_not_overwrite_a_previous_run(self) -> None:
+          '''.replace("          ", "")
+          addition = r'''    def test_minimal_pipeline_skips_optional_stages_without_degrading_status(self) -> None:
+              with tempfile.TemporaryDirectory() as temporary:
+                  root = Path(temporary)
+                  source = root / "source.zip"
+                  with zipfile.ZipFile(source, "w") as archive:
+                      archive.writestr("asset.txt", b"fixture")
+                  config = root / "pipeline.json"
+                  config.write_text(json.dumps({"sources": ["source.zip"]}), encoding="utf-8")
+                  output = root / "run"
+
+                  manifest = run_pipeline(config, output)
+
+              self.assertEqual(manifest["status"], "complete")
+              for name in ("matching", "textured", "rendering", "visual"):
+                  self.assertEqual(manifest["stages"][name]["status"], "skipped")
+                  self.assertFalse(manifest["stages"][name]["required"])
+              for name in ("acquisition", "extraction", "classification"):
+                  self.assertTrue(manifest["stages"][name]["required"])
+
+              def test_placeholder(self):
+                  pass
+
+          '''.replace("              def test_placeholder(self):\n                  pass\n\n", "").replace("          ", "")
+          addition += r'''    def test_extraction_failure_blocks_configured_downstream_stages(self) -> None:
+              with tempfile.TemporaryDirectory() as temporary:
+                  root = Path(temporary)
+                  source = root / "source.npk"
+                  source.write_bytes(b"NXPK-fixture")
+                  config = root / "pipeline.json"
+                  config.write_text(
+                      json.dumps(
+                          {
+                              "sources": ["source.npk"],
+                              "dictionary": "dictionary.json",
+                              "textured": {"source_tree": "source-tree"},
+                              "references": ["reference.png"],
+                          }
+                      ),
+                      encoding="utf-8",
+                  )
+                  output = root / "run"
+                  with patch(
+                      "asset_extractor.orchestrator._extract_sources",
+                      side_effect=ExtractionError("dedicated backend timed out"),
+                  ):
+                      manifest = run_pipeline(config, output)
+
+                  persisted = json.loads((output / "pipeline-manifest.json").read_text(encoding="utf-8"))
+
+              self.assertEqual(manifest["status"], "failed")
+              self.assertEqual(persisted["status"], "failed")
+              self.assertEqual(manifest["stages"]["extraction"]["status"], "failed")
+              for name in ("classification", "matching", "textured", "rendering", "visual"):
+                  self.assertEqual(manifest["stages"][name]["status"], "blocked")
+                  self.assertTrue(manifest["stages"][name]["required"])
+
+          '''.replace("          ", "")
+          if text.count(anchor) != 1:
+              raise SystemExit("unexpected orchestrator test insertion point")
+          tests.write_text(text.replace(anchor, addition + anchor, 1), encoding="utf-8")
+
+          backend_tests = Path("development/tests/test_backends.py")
+          text = backend_tests.read_text(encoding="utf-8")
+          text = text.replace(
+              "from subprocess import CompletedProcess\n",
+              "from subprocess import CompletedProcess, TimeoutExpired\n",
+              1,
+          )
+          text = text.replace(
+              "from asset_extractor.cli import build_parser  # noqa: E402\n",
+              "from asset_extractor.cli import build_parser  # noqa: E402\nfrom asset_extractor.errors import ExtractionError  # noqa: E402\n",
+              1,
+          )
+          anchor = '''    def test_extract_cli_exposes_backend_selection(self) -> None:
+          '''.replace("          ", "")
+          addition = r'''    def test_dedicated_adapter_converts_timeout_to_domain_error(self) -> None:
+              with tempfile.TemporaryDirectory() as temporary:
+                  root = Path(temporary)
+                  source = root / "sample.npk"
+                  source.write_bytes(b"source")
+                  script = root / "wrapper.py"
+                  script.write_text("", encoding="utf-8")
+                  adapter = DedicatedBackend(script)
+                  adapter.timeout_seconds = 5
+                  request = BackendRequest(
+                      source_paths=(source,), output=root / "run", backend="auto"
+                  )
+                  timeout = TimeoutExpired(
+                      ["python"], 5, output="partial stdout", stderr="partial stderr"
+                  )
+                  with patch("asset_extractor.backends.subprocess.run", side_effect=timeout):
+                      with self.assertRaises(ExtractionError) as caught:
+                          adapter.extract(request)
+
+              message = str(caught.exception)
+              self.assertIn("backend=auto", message)
+              self.assertIn(f"source={source.resolve()}", message)
+              self.assertIn("timeout_seconds=5", message)
+              self.assertIn("partial stdout", message)
+              self.assertIn("partial stderr", message)
+
+          '''.replace("          ", "")
+          if text.count(anchor) != 1:
+              raise SystemExit("unexpected backend test insertion point")
+          backend_tests.write_text(text.replace(anchor, addition + anchor, 1), encoding="utf-8")
+
+          spec = Path("docs/specs/README.md")
+          text = spec.read_text(encoding="utf-8")
+          anchor = "- fail closed when required evaluation is unresolved or input/output integrity cannot be established.\n"
+          addition = (
+              anchor
+              + "- treat omitted optional pipeline stages as `skipped` without degrading the overall run; "
+              + "once an optional stage is configured, it is required for that run;\n"
+              + "- report a required upstream failure as `failed`, mark dependent required stages `blocked`, "
+              + "and never convert required `partial`/`failed`/`blocked` work into `complete`.\n"
+          )
+          if text.count(anchor) != 1:
+              raise SystemExit("unexpected spec insertion point")
+          spec.write_text(text.replace(anchor, addition, 1), encoding="utf-8")
+          PY
+      - name: Format and review patch
+        run: |
+          python -m ruff format programs/src/asset_extractor/orchestrator.py programs/src/asset_extractor/backends.py development/tests/test_orchestrator.py development/tests/test_backends.py
+          git diff --check
+          git diff --stat
+      - name: Commit patch and remove migration workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-issue12-correctness.yml
+          git add programs/src/asset_extractor/orchestrator.py programs/src/asset_extractor/backends.py development/tests/test_orchestrator.py development/tests/test_backends.py docs/specs/README.md
+          git commit -m "fix: harden pipeline completion and backend timeouts"
+          git push origin HEAD:codex/issue-12-correctness
