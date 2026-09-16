@@ -1,0 +1,46 @@
+name: Cleanup test import shims
+
+on:
+  push:
+    branches:
+      - codex/issue-12-test-import-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: codex/issue-12-test-import-cleanup
+      - name: Remove per-test source-path shims
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          changed = []
+          needle = 'sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))\n'
+          for path in sorted(Path('development/tests').glob('test_*.py')):
+              text = path.read_text(encoding='utf-8')
+              if needle not in text:
+                  continue
+              text = text.replace(needle, '')
+              if 'sys.' not in text:
+                  text = text.replace('import sys\n', '')
+              path.write_text(text, encoding='utf-8')
+              changed.append(str(path))
+          if not changed:
+              raise SystemExit('no sys.path shims found')
+          print('\n'.join(changed))
+          PY
+          rm .github/workflows/cleanup-test-imports.yml
+      - name: Commit cleanup
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add development/tests .github/workflows/cleanup-test-imports.yml
+          git diff --cached --check
+          git commit -m 'test: remove per-file source path shims'
+          git push origin HEAD:codex/issue-12-test-import-cleanup
