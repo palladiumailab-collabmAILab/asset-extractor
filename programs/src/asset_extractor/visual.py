@@ -10,6 +10,19 @@ MIN_ACCEPTED_SCORE = 0.65
 MIN_ACCEPTED_INLIERS = 4
 
 
+def _ratio_test_matches(pairs: Any, ratio: float = 0.75) -> list[Any]:
+    """Apply Lowe's ratio test while tolerating sparse k-NN rows."""
+
+    good: list[Any] = []
+    for pair in pairs:
+        if len(pair) < 2:
+            continue
+        first, second = pair[0], pair[1]
+        if first.distance < ratio * second.distance:
+            good.append(first)
+    return good
+
+
 def compare_images(reference: Path, candidate: Path) -> dict[str, Any]:
     """Score a reference/candidate pair using OpenCV when installed.
 
@@ -76,7 +89,7 @@ def compare_images(reference: Path, candidate: Path) -> dict[str, Any]:
     if reference_descriptors is not None and candidate_descriptors is not None:
         matcher = cv2_module.BFMatcher(cv2_module.NORM_HAMMING)
         pairs = matcher.knnMatch(reference_descriptors, candidate_descriptors, k=2)
-        good = [first for first, second in pairs if first.distance < 0.75 * second.distance]
+        good = _ratio_test_matches(pairs)
         good_matches = len(good)
         if good_matches >= 4:
             source_points = numpy_module.float32(
