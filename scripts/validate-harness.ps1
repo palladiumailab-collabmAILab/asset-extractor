@@ -20,6 +20,20 @@ function Invoke-Checked {
     }
 }
 
+function Invoke-PythonValidation {
+    Invoke-Checked 'skill validation' { python scripts/validate-skills.py skills }
+    Invoke-Checked 'asset extractor tests' { coverage run --branch -m unittest discover -s development/tests -t . }
+    Invoke-Checked 'coverage threshold' { coverage report --omit='*/config.py,*/config-*.py' --fail-under=55 }
+    Invoke-Checked 'Ruff lint' { ruff check programs scripts development/tests }
+    Invoke-Checked 'Ruff format' { ruff format --check programs scripts development/tests }
+    Invoke-Checked 'mypy' { mypy }
+    Invoke-Checked 'schema validation' {
+        python scripts/validate-schemas.py `
+            --manifest visual-reference-evidence=development/config/character-asset-evidence-20260914.json `
+            --manifest visual-reference-evidence=development/config/kainin-asset-variants-20260914.json
+    }
+}
+
 Push-Location $repositoryRoot
 try {
     Invoke-Checked 'unstaged whitespace check' { git diff --check }
@@ -42,17 +56,19 @@ try {
     }
 
     if ($SkipDocker) {
-        Invoke-Checked 'skill validation' { python scripts/validate-skills.py skills }
+        Invoke-PythonValidation
     }
     else {
         Invoke-Checked 'Docker availability check' { docker info --format '{{.ServerVersion}}' }
-        $mount = "type=bind,source=$repositoryRoot,target=/workspace,readonly"
-        Invoke-Checked 'containerized skill validation' {
-            docker run --rm --mount $mount python:3.13-slim sh -c 'python -m pip install --root-user-action=ignore --disable-pip-version-check --no-cache-dir --quiet -r /workspace/requirements-dev.txt && python /workspace/scripts/validate-skills.py /workspace/skills'
+        $imageName = "asset-extractor-validation:$PID"
+        Invoke-Checked 'Docker validation image build' { docker build --tag $imageName . }
+        try {
+            Invoke-Checked 'containerized repository validation' { docker run --rm $imageName }
+        }
+        finally {
+            docker image rm $imageName | Out-Null
         }
     }
-
-    Invoke-Checked 'asset extractor tests' { python -m unittest discover -s development/tests -t . }
 
     Write-Output 'Harness validation passed.'
 }
