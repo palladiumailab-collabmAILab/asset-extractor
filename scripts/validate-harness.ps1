@@ -21,9 +21,14 @@ function Invoke-Checked {
 }
 
 function Invoke-PythonValidation {
+    Invoke-Checked 'package install' { python -m pip install --disable-pip-version-check --no-deps . }
+    Invoke-Checked 'package metadata smoke' {
+        python -c "import importlib.metadata as m; import asset_extractor; assert m.version('asset-extractor') == asset_extractor.__version__"
+    }
+    Invoke-Checked 'console script smoke' { asset-extractor --help | Out-Null }
     Invoke-Checked 'skill validation' { python scripts/validate-skills.py skills }
-    Invoke-Checked 'asset extractor tests' { coverage run --branch -m unittest discover -s development/tests -t . }
-    Invoke-Checked 'coverage threshold' { coverage report --omit='*/config.py,*/config-*.py' --fail-under=55 }
+    Invoke-Checked 'asset extractor tests' { coverage run --branch --source=asset_extractor -m unittest discover -s development/tests -t . }
+    Invoke-Checked 'coverage threshold' { coverage report --fail-under=55 }
     Invoke-Checked 'Ruff lint' { ruff check programs scripts development/tests }
     Invoke-Checked 'Ruff format' { ruff format --check programs scripts development/tests }
     Invoke-Checked 'mypy' { mypy }

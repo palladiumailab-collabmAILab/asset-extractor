@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +9,6 @@ from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 MODULE_PATH = PROJECT_ROOT / "programs" / "run_netease_backend.py"
 SPEC = importlib.util.spec_from_file_location("run_netease_backend", MODULE_PATH)
 assert SPEC and SPEC.loader

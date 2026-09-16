@@ -4,10 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 
 from asset_extractor.classification import classify_file  # noqa: E402
 from asset_extractor.media_probe import probe_bytes  # noqa: E402
