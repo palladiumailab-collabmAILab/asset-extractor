@@ -6,7 +6,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal, Required, TypedDict, cast
 
 from .backends import BackendRequest, extract_with_backend
 from .classification import classify_manifest_entries
@@ -87,16 +87,71 @@ def _run_python(script: Path, arguments: list[str]) -> subprocess.CompletedProce
         raise PipelineError(f"pipeline subprocess timed out after 900 seconds: {script}") from exc
 
 
-def _result(status: str, manifest: Path | None = None, **fields: Any) -> dict[str, Any]:
+StageStatus = Literal["complete", "partial", "failed", "skipped", "blocked"]
+_STAGE_STATUS_VALUES = {"complete", "partial", "failed", "skipped", "blocked"}
+_PIPELINE_STAGE_ORDER = (
+    "acquisition",
+    "extraction",
+    "classification",
+    "matching",
+    "textured",
+    "rendering",
+    "visual",
+)
+
+
+class StageResult(TypedDict, total=False):
+    status: Required[StageStatus]
+    required: bool
+    manifest: str
+    reason: str
+    message: str
+
+
+def _stage_status(value: Any) -> StageStatus:
+    if isinstance(value, str) and value in _STAGE_STATUS_VALUES:
+        return cast(StageStatus, value)
+    return "failed"
+
+
+def _result(status: StageStatus, manifest: Path | None = None, **fields: Any) -> StageResult:
     result: dict[str, Any] = {"status": status, **fields}
     if manifest is not None:
         result["manifest"] = str(manifest.resolve())
-    return result
+    return cast(StageResult, result)
+
+
+def _required_stages(config: dict[str, Any]) -> set[str]:
+    required = {"acquisition", "extraction", "classification"}
+    if config.get("dictionary") is not None:
+        required.add("matching")
+    if config.get("textured") is not None:
+        required.update({"textured", "rendering"})
+    if config.get("references") is not None:
+        required.add("visual")
+    return required
+
+
+def _stage_usable(stage: StageResult) -> bool:
+    return stage.get("status") in {"complete", "partial"}
+
+
+def _pipeline_status(
+    stages: dict[str, StageResult], required: set[str]
+) -> Literal["complete", "partial", "failed"]:
+    statuses = [stages[name]["status"] for name in required if name in stages]
+    if len(statuses) != len(required) or any(
+        status in {"failed", "blocked", "skipped"} for status in statuses
+    ):
+        return "failed"
+    if any(status == "partial" for status in statuses):
+        return "partial"
+    return "complete"
 
 
 def _source_paths(
     config: dict[str, Any], config_dir: Path, run_root: Path
-) -> tuple[list[Path], dict[str, Any]]:
+) -> tuple[list[Path], StageResult]:
     sources = config.get("sources")
     acquisition = config.get("acquisition")
     if sources is not None and acquisition is not None:
@@ -388,7 +443,7 @@ def _extract_sources(
     return combined
 
 
-def _run_textured_stage(run_root: Path, config_dir: Path, config: dict[str, Any]) -> dict[str, Any]:
+def _run_textured_stage(run_root: Path, config_dir: Path, config: dict[str, Any]) -> StageResult:
     source_tree = _path(config.get("source_tree"), config_dir, "textured.source_tree")
     script = Path(__file__).resolve().parents[2] / "prepare_textured_pilot.py"
     output = run_root / "textured"
@@ -431,12 +486,10 @@ def _run_textured_stage(run_root: Path, config_dir: Path, config: dict[str, Any]
             error=completed.stderr.strip() or completed.stdout.strip(),
         )
     document = json.loads(manifest.read_text(encoding="utf-8"))
-    return _result(str(document.get("status", "failed")), manifest, returncode=completed.returncode)
+    return _result(_stage_status(document.get("status")), manifest, returncode=completed.returncode)
 
 
-def _run_render_stage(
-    run_root: Path, textured: dict[str, Any]
-) -> tuple[dict[str, Any], list[Path]]:
+def _run_render_stage(run_root: Path, textured: StageResult) -> tuple[StageResult, list[Path]]:
     if textured.get("status") not in {"complete", "partial"} or not textured.get("manifest"):
         return _result("skipped", reason="textured stage did not publish a manifest"), []
     document = json.loads(Path(str(textured["manifest"])).read_text(encoding="utf-8"))
@@ -468,7 +521,7 @@ def _run_render_stage(
     ), rendered
 
 
-def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -> dict[str, Any]:
+def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -> StageResult:
     if config is None:
         return _result("skipped", reason="no reference images configured")
     if not isinstance(config, list) or not config:
@@ -546,10 +599,14 @@ def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
     config = _load_config(config_path)
     output.mkdir(parents=True)
     config_dir = config_path.parent
-    stages: dict[str, Any] = {}
+    required = _required_stages(config)
+    stages: dict[str, StageResult] = {}
+    current_stage = "acquisition"
     try:
         sources, acquisition = _source_paths(config, config_dir, output)
         stages["acquisition"] = acquisition
+
+        current_stage = "extraction"
         extraction = _extract_sources(config, config_dir, sources, output / "extraction")
         extraction_manifest = next(
             (
@@ -564,11 +621,15 @@ def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
             output / "extraction" / "run-manifest.json",
         )
         stages["extraction"] = _result(
-            str(extraction.get("status", "failed")),
+            _stage_status(extraction.get("status")),
             extraction_manifest,
             entries=len(extraction.get("entries", [])),
         )
+        if not _stage_usable(stages["extraction"]):
+            raise PipelineError("extraction stage did not produce usable outputs")
+
         _write_publication_inputs(output, extraction, extraction_manifest)
+        current_stage = "classification"
         classification = classify_manifest_entries(
             run_root=output,
             source_manifest=extraction,
@@ -577,12 +638,16 @@ def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
             source_output_root=output / "extraction",
         )
         stages["classification"] = _result(
-            str(classification.get("status", "failed")),
+            _stage_status(classification.get("status")),
             output / "type-classification.json",
             counts=classification.get("counts", {}),
         )
+        if not _stage_usable(stages["classification"]):
+            raise PipelineError("classification stage did not produce usable outputs")
+
         _build_assets_manifest(classification, output / "assets.json")
         dictionary = config.get("dictionary")
+        current_stage = "matching"
         if dictionary:
             dictionary_path = _path(dictionary, config_dir, "dictionary")
             match = build_match_manifest(dictionary_path, output / "assets.json")
@@ -592,32 +657,60 @@ def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
             )
         else:
             stages["matching"] = _result("skipped", reason="no dictionary configured")
+
         textured_config = config.get("textured")
+        current_stage = "textured"
         if textured_config is not None:
             if not isinstance(textured_config, dict):
                 raise PipelineError("textured must be an object")
             stages["textured"] = _run_textured_stage(output, config_dir, textured_config)
         else:
             stages["textured"] = _result("skipped", reason="no NeoX publication configuration")
-        stages["rendering"], rendered = _run_render_stage(output, stages["textured"])
-        stages["visual"] = _run_visual_stage(config.get("references"), config_dir, rendered)
-        required = [
-            "acquisition",
-            "extraction",
-            "classification",
-            "matching",
-            "textured",
-            "rendering",
-            "visual",
-        ]
-        status = (
-            "complete"
-            if all(stages[name].get("status") == "complete" for name in required)
-            else "partial"
-        )
+
+        current_stage = "rendering"
+        if textured_config is None:
+            stages["rendering"] = _result("skipped", reason="no textured stage configured")
+            rendered: list[Path] = []
+        elif _stage_usable(stages["textured"]):
+            stages["rendering"], rendered = _run_render_stage(output, stages["textured"])
+        else:
+            stages["rendering"] = _result(
+                "blocked", reason="textured stage did not produce usable outputs"
+            )
+            rendered = []
+
+        current_stage = "visual"
+        references = config.get("references")
+        if references is None:
+            stages["visual"] = _result("skipped", reason="no reference images configured")
+        elif textured_config is not None and not _stage_usable(stages["rendering"]):
+            stages["visual"] = _result(
+                "blocked", reason="rendering stage did not produce usable candidates"
+            )
+        else:
+            stages["visual"] = _run_visual_stage(references, config_dir, rendered)
+
+        status = _pipeline_status(stages, required)
     except (OSError, PipelineError, ExtractionError, ValueError, json.JSONDecodeError) as exc:
-        stages["error"] = {"status": "failed", "message": str(exc)}
+        if current_stage not in stages:
+            stages[current_stage] = _result("failed", message=str(exc))
+        for name in _PIPELINE_STAGE_ORDER:
+            if name in stages:
+                continue
+            if name in required:
+                stages[name] = _result(
+                    "blocked", reason="pipeline aborted before this required stage"
+                )
+            else:
+                stages[name] = _result(
+                    "skipped", reason="pipeline aborted before this optional stage"
+                )
+        stages["error"] = _result("failed", message=str(exc))
         status = "failed"
+
+    for name in _PIPELINE_STAGE_ORDER:
+        stages[name]["required"] = name in required
+
     manifest = {
         "schema_version": 1,
         "operation": "asset-extraction-pipeline",

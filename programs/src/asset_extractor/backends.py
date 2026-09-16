@@ -121,15 +121,33 @@ class DedicatedBackend:
         return command
 
     def extract(self, request: BackendRequest) -> dict[str, Any]:
-        completed = subprocess.run(
-            self._command(request),
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=self.timeout_seconds,
-        )
+        command = self._command(request)
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=self.timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+
+            def bounded(value: str | bytes | None) -> str:
+                if value is None:
+                    return ""
+                if isinstance(value, bytes):
+                    value = value.decode("utf-8", errors="replace")
+                return value.strip()[:500]
+
+            source = str(request.source_paths[0].resolve())
+            raise ExtractionError(
+                "dedicated backend timed out: "
+                f"backend={request.backend} source={source} "
+                f"timeout_seconds={self.timeout_seconds} "
+                f"stdout={bounded(exc.stdout)!r} stderr={bounded(exc.stderr)!r}"
+            ) from exc
         for filename in ("backend-run-manifest.json", "run-manifest.json"):
             manifest_path = request.output / filename
             if not manifest_path.is_file():

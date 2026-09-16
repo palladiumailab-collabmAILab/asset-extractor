@@ -15,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 
 from asset_extractor.classification import classify_manifest_entries  # noqa: E402
+from asset_extractor.errors import ExtractionError  # noqa: E402
 from asset_extractor.orchestrator import (  # noqa: E402
     PipelineError,
     _extract_sources,
@@ -83,7 +84,7 @@ class OrchestratorTests(unittest.TestCase):
             output = root / "run"
             manifest = run_pipeline(config, output)
 
-            self.assertEqual(manifest["status"], "partial")
+            self.assertEqual(manifest["status"], "complete")
             self.assertEqual(manifest["stages"]["extraction"]["status"], "complete")
             self.assertEqual(manifest["stages"]["classification"]["status"], "complete")
             self.assertEqual(manifest["stages"]["matching"]["summary"]["paired_3d_image"], 2)
@@ -96,6 +97,58 @@ class OrchestratorTests(unittest.TestCase):
                 ),
                 [],
             )
+
+    def test_minimal_pipeline_skips_optional_stages_without_degrading_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source.zip"
+            with zipfile.ZipFile(source, "w") as archive:
+                archive.writestr("asset.txt", b"fixture")
+            config = root / "pipeline.json"
+            config.write_text(json.dumps({"sources": ["source.zip"]}), encoding="utf-8")
+            output = root / "run"
+
+            manifest = run_pipeline(config, output)
+
+        self.assertEqual(manifest["status"], "complete")
+        for name in ("matching", "textured", "rendering", "visual"):
+            self.assertEqual(manifest["stages"][name]["status"], "skipped")
+            self.assertFalse(manifest["stages"][name]["required"])
+        for name in ("acquisition", "extraction", "classification"):
+            self.assertTrue(manifest["stages"][name]["required"])
+
+    def test_extraction_failure_blocks_configured_downstream_stages(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source.npk"
+            source.write_bytes(b"NXPK-fixture")
+            config = root / "pipeline.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "sources": ["source.npk"],
+                        "dictionary": "dictionary.json",
+                        "textured": {"source_tree": "source-tree"},
+                        "references": ["reference.png"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output = root / "run"
+            with patch(
+                "asset_extractor.orchestrator._extract_sources",
+                side_effect=ExtractionError("dedicated backend timed out"),
+            ):
+                manifest = run_pipeline(config, output)
+
+            persisted = json.loads((output / "pipeline-manifest.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["status"], "failed")
+        self.assertEqual(persisted["status"], "failed")
+        self.assertEqual(manifest["stages"]["extraction"]["status"], "failed")
+        for name in ("classification", "matching", "textured", "rendering", "visual"):
+            self.assertEqual(manifest["stages"][name]["status"], "blocked")
+            self.assertTrue(manifest["stages"][name]["required"])
 
     def test_pipeline_does_not_overwrite_a_previous_run(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

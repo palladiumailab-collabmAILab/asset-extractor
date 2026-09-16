@@ -4,7 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from subprocess import CompletedProcess
+from subprocess import CompletedProcess, TimeoutExpired
 from unittest.mock import patch
 
 import sys
@@ -21,6 +21,7 @@ from asset_extractor.backends import (  # noqa: E402
     extract_with_backend,
 )
 from asset_extractor.cli import build_parser  # noqa: E402
+from asset_extractor.errors import ExtractionError  # noqa: E402
 
 
 class BackendContractTests(unittest.TestCase):
@@ -80,6 +81,30 @@ class BackendContractTests(unittest.TestCase):
             command = run.call_args.args[0]
             self.assertEqual(command[1], str(script.resolve()))
             self.assertFalse(run.call_args.kwargs.get("shell", False))
+
+    def test_dedicated_adapter_converts_timeout_to_domain_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "sample.npk"
+            source.write_bytes(b"source")
+            script = root / "wrapper.py"
+            script.write_text("", encoding="utf-8")
+            adapter = DedicatedBackend(script)
+            adapter.timeout_seconds = 5
+            request = BackendRequest(source_paths=(source,), output=root / "run", backend="auto")
+            timeout = TimeoutExpired(
+                ["python"], 5, output="partial stdout", stderr="partial stderr"
+            )
+            with patch("asset_extractor.backends.subprocess.run", side_effect=timeout):
+                with self.assertRaises(ExtractionError) as caught:
+                    adapter.extract(request)
+
+        message = str(caught.exception)
+        self.assertIn("backend=auto", message)
+        self.assertIn(f"source={source.resolve()}", message)
+        self.assertIn("timeout_seconds=5", message)
+        self.assertIn("partial stdout", message)
+        self.assertIn("partial stderr", message)
 
     def test_extract_cli_exposes_backend_selection(self) -> None:
         arguments = build_parser().parse_args(
