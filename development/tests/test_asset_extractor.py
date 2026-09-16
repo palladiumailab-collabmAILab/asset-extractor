@@ -5,7 +5,6 @@ import importlib.util
 import json
 import os
 import struct
-import sys
 import tempfile
 import unittest
 import zipfile
@@ -14,7 +13,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 
 from asset_extractor import pipeline as pipeline_module  # noqa: E402
 from asset_extractor.cli import main  # noqa: E402

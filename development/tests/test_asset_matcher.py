@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import json
 import importlib.util
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 
 from asset_extractor.cli import main  # noqa: E402
 from asset_extractor.errors import ExtractionError  # noqa: E402

@@ -7,10 +7,8 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 
 from asset_extractor.visual import _ratio_test_matches, compare_images  # noqa: E402
 

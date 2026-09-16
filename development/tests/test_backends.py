@@ -7,11 +7,9 @@ from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired
 from unittest.mock import patch
 
-import sys
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT / "programs" / "src"))
 
 from asset_extractor.backends import (  # noqa: E402
     BackendRegistry,
