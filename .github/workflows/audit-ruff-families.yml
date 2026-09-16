@@ -1,0 +1,29 @@
+name: Audit Ruff candidate families
+
+on:
+  push:
+    branches:
+      - codex/issue-23-ruff-audit
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.8.4
+      - name: Audit I
+        continue-on-error: true
+        run: ruff check --select I programs scripts development/tests
+      - name: Audit UP
+        continue-on-error: true
+        run: ruff check --select UP programs scripts development/tests
+      - name: Audit B
+        continue-on-error: true
+        run: ruff check --select B programs scripts development/tests
+      - name: Audit SIM
+        continue-on-error: true
+        run: ruff check --select SIM programs scripts development/tests
