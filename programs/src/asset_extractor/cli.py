@@ -38,9 +38,17 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("inputs", nargs="+", help="input files")
     extract.add_argument("--output", required=True, type=Path, help="new run directory")
     extract.add_argument("--profile", choices=("auto", "zip", "nxpk"), default="auto")
-    extract.add_argument("--best-effort", action="store_true", help="record missing inputs and continue where safe")
-    extract.add_argument("--resume", action="store_true", help="reuse only a manifest and output tree whose hashes and key match")
-    extract.add_argument("--report", type=Path, help="write a success or failure JSON report atomically")
+    extract.add_argument(
+        "--best-effort", action="store_true", help="record missing inputs and continue where safe"
+    )
+    extract.add_argument(
+        "--resume",
+        action="store_true",
+        help="reuse only a manifest and output tree whose hashes and key match",
+    )
+    extract.add_argument(
+        "--report", type=Path, help="write a success or failure JSON report atomically"
+    )
     extract.add_argument(
         "--backend",
         choices=("builtin", "auto", "neoxtractor", "neox-tools"),
@@ -59,15 +67,25 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--backend-python", type=Path)
     _add_limits(extract)
 
-    validate = subparsers.add_parser("validate-manifest", help="validate one or more manifests and their output hashes")
+    validate = subparsers.add_parser(
+        "validate-manifest", help="validate one or more manifests and their output hashes"
+    )
     validate.add_argument("manifests", nargs="+", type=Path)
 
-    match = subparsers.add_parser("match-assets", help="match logical asset names to an external game dictionary")
-    match.add_argument("--dictionary", required=True, type=Path, help="CSV or JSON entity dictionary")
-    match.add_argument("--assets", required=True, type=Path, help="JSON manifest containing assets[] or entries[]")
+    match = subparsers.add_parser(
+        "match-assets", help="match logical asset names to an external game dictionary"
+    )
+    match.add_argument(
+        "--dictionary", required=True, type=Path, help="CSV or JSON entity dictionary"
+    )
+    match.add_argument(
+        "--assets", required=True, type=Path, help="JSON manifest containing assets[] or entries[]"
+    )
     match.add_argument("--output", required=True, type=Path, help="new match manifest path")
 
-    pipeline = subparsers.add_parser("pipeline", help="run acquisition through visual evidence in one configuration")
+    pipeline = subparsers.add_parser(
+        "pipeline", help="run acquisition through visual evidence in one configuration"
+    )
     pipeline.add_argument("--config", required=True, type=Path, help="JSON pipeline configuration")
     pipeline.add_argument("--output", required=True, type=Path, help="new pipeline run directory")
     return parser
@@ -146,21 +164,44 @@ def main(argv: list[str] | None = None) -> int:
                     errors = [str(exc)]
                 if errors:
                     all_valid = False
-                    print(json.dumps({"path": str(manifest_path), "valid": False, "errors": errors}, ensure_ascii=False, indent=2))
+                    print(
+                        json.dumps(
+                            {"path": str(manifest_path), "valid": False, "errors": errors},
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                    )
                 else:
-                    print(json.dumps({"path": str(manifest_path), "valid": True}, ensure_ascii=False, indent=2))
+                    print(
+                        json.dumps(
+                            {"path": str(manifest_path), "valid": True},
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                    )
             return 0 if all_valid else 2
         if arguments.command == "match-assets":
-            manifest = write_match_manifest(arguments.dictionary, arguments.assets, arguments.output)
+            manifest = write_match_manifest(
+                arguments.dictionary, arguments.assets, arguments.output
+            )
             print(json.dumps(manifest["summary"], ensure_ascii=False, indent=2))
             return 0
         if arguments.command == "pipeline":
             manifest = run_pipeline(arguments.config, arguments.output)
-            print(json.dumps({"status": manifest["status"], "output": str(arguments.output.resolve())}, ensure_ascii=False))
+            print(
+                json.dumps(
+                    {"status": manifest["status"], "output": str(arguments.output.resolve())},
+                    ensure_ascii=False,
+                )
+            )
             return _status_exit_code(manifest["status"])
         if arguments.command == "scan":
             if arguments.report:
-                existing_inputs = [Path(item).expanduser().resolve(strict=False) for item in arguments.inputs if Path(item).expanduser().exists()]
+                existing_inputs = [
+                    Path(item).expanduser().resolve(strict=False)
+                    for item in arguments.inputs
+                    if Path(item).expanduser().exists()
+                ]
                 if existing_inputs:
                     assert_output_disjoint(existing_inputs, resolve_output_path(arguments.report))
             manifest = build_scan_manifest(arguments.inputs, _limits(arguments))

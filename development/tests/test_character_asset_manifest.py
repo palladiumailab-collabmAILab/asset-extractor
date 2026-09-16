@@ -144,14 +144,20 @@ class CharacterAssetManifestTests(unittest.TestCase):
         character = manifest["characters"][0]
         self.assertEqual(character["candidate_count"], 2)
         self.assertEqual(character["verified_count"], 1)
-        statuses = {item["logical_path"]: item["selection_status"] for item in character["model_candidates"]}
+        statuses = {
+            item["logical_path"]: item["selection_status"] for item in character["model_candidates"]
+        }
         self.assertEqual(statuses["model/s3_hairen/s3_hairen.mesh"], "verified")
         self.assertEqual(statuses["model/c1_hairen/c1_hairen.mesh"], "unmapped-candidate")
-        publication = {item["logical_path"]: item["publication_status"] for item in character["model_candidates"]}
+        publication = {
+            item["logical_path"]: item["publication_status"]
+            for item in character["model_candidates"]
+        }
         self.assertEqual(publication["model/s3_hairen/s3_hairen.mesh"], "verified")
         self.assertEqual(publication["model/c1_hairen/c1_hairen.mesh"], "blocked-visual-evidence")
         verified = next(
-            item for item in character["model_candidates"]
+            item
+            for item in character["model_candidates"]
             if item["logical_path"] == "model/s3_hairen/s3_hairen.mesh"
         )
         self.assertEqual(verified["visual_reference_ids"], ["hairen-s3-illustration"])
@@ -173,7 +179,10 @@ class CharacterAssetManifestTests(unittest.TestCase):
     @unittest.skipUnless(JSONSCHEMA_AVAILABLE, "jsonschema is supplied by requirements-dev.txt")
     def test_published_manifest_matches_schema(self) -> None:
         manifest = MODULE.build_manifest(
-            self.write_table(), [self.write_catalog()], self.root / "schema-run", self.write_evidence()
+            self.write_table(),
+            [self.write_catalog()],
+            self.root / "schema-run",
+            self.write_evidence(),
         )
         self.assertEqual(
             validate_document(
@@ -198,21 +207,21 @@ class CharacterAssetManifestTests(unittest.TestCase):
     def test_user_four_column_table_is_normalized_with_rarity_and_pinyin_key(self) -> None:
         path = self.root / "user-table.tsv"
         path.write_text(
-            "rarity\tjapanese\tchinese\tpinyin\n"
-            "SR\t海忍\t海忍\thairen\n",
+            "rarity\tjapanese\tchinese\tpinyin\n" "SR\t海忍\t海忍\thairen\n",
             encoding="utf-8",
         )
         rows = MODULE.load_character_table(path)
         self.assertEqual(rows[0]["character_id"], "hairen")
         self.assertEqual(rows[0]["asset_token"], "hairen")
         self.assertEqual(rows[0]["rarity"], "SR")
-        self.assertEqual(MODULE.character_table_columns(path), ("rarity", "japanese", "chinese", "pinyin"))
+        self.assertEqual(
+            MODULE.character_table_columns(path), ("rarity", "japanese", "chinese", "pinyin")
+        )
 
     def test_user_japanese_header_aliases_are_accepted(self) -> None:
         path = self.root / "user-table-ja.tsv"
         path.write_text(
-            "レアリティ\t日本語\t中国語\t中国語読み\n"
-            "SR\t海忍\t海忍\thairen\n",
+            "レアリティ\t日本語\t中国語\t中国語読み\n" "SR\t海忍\t海忍\thairen\n",
             encoding="utf-8",
         )
         rows = MODULE.load_character_table(path)

@@ -183,12 +183,18 @@ def _select_candidate(
 ) -> tuple[Candidate | None, list[str]]:
     failures: list[str] = []
     if requested_member is not None:
-        matching = [candidate for candidate in candidates if _candidate_matches_member(candidate, requested_member)]
+        matching = [
+            candidate
+            for candidate in candidates
+            if _candidate_matches_member(candidate, requested_member)
+        ]
         if not matching:
             failures.append(f"requested {kind} member was not found: {requested_member}")
             return None, failures
         if len(matching) > 1:
-            failures.append(f"requested {kind} member is ambiguous across source archives: {requested_member}")
+            failures.append(
+                f"requested {kind} member is ambiguous across source archives: {requested_member}"
+            )
             return None, failures
         candidate = matching[0]
         if candidate.validation_error:
@@ -324,7 +330,8 @@ def _find_nested_nxpk_image(
             match = find_first_nxpk_payload(
                 temporary_path,
                 nxpk_limits,
-                lambda payload: detect_format_bytes(payload[:DETECTION_READ_BYTES])["family"] == "image",
+                lambda payload: detect_format_bytes(payload[:DETECTION_READ_BYTES])["family"]
+                == "image",
             )
             if match is None:
                 rejections.append(f"nested archive has no recognised image payload: {normalized}")
@@ -838,7 +845,9 @@ def _select_and_record_assets(
     """Select video/image candidates, including the nested-NXPK fallback."""
 
     selected_video, video_failures = _select_candidate("video", video_candidates, video_member)
-    selected_direct_image, image_failures = _select_candidate("image", image_candidates, image_member)
+    selected_direct_image, image_failures = _select_candidate(
+        "image", image_candidates, image_member
+    )
     selected_image: Candidate | NestedCandidate | None = selected_direct_image
     if selected_image is None and image_member is None:
         nested_image, nested_failures = _find_nested_nxpk_image(records, output, limits)
@@ -905,8 +914,12 @@ def _finalize_manifest(output: Path, manifest: dict[str, Any]) -> dict[str, Any]
 
     completed_assets = [asset for asset in manifest["assets"] if asset.get("status") == "complete"]
     manifest["summary"]["assets_completed"] = len(completed_assets)
-    manifest["summary"]["hashes_verified"] = sum(1 for asset in completed_assets if asset["hash_match"])
-    manifest["summary"]["formats_verified"] = sum(1 for asset in completed_assets if asset["format_match"])
+    manifest["summary"]["hashes_verified"] = sum(
+        1 for asset in completed_assets if asset["hash_match"]
+    )
+    manifest["summary"]["formats_verified"] = sum(
+        1 for asset in completed_assets if asset["format_match"]
+    )
     if (
         len(completed_assets) == 2
         and manifest["summary"]["hashes_verified"] == 2
@@ -969,8 +982,12 @@ def run_minimal_restore_test(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", action="append", required=True, help="read-only ZIP/OBB source; repeatable")
-    parser.add_argument("--output", required=True, help="new run directory; it must not already exist")
+    parser.add_argument(
+        "--source", action="append", required=True, help="read-only ZIP/OBB source; repeatable"
+    )
+    parser.add_argument(
+        "--output", required=True, help="new run directory; it must not already exist"
+    )
     parser.add_argument("--video-member", help="exact archive member to use for the video")
     parser.add_argument("--image-member", help="exact archive member to use for the image")
     parser.add_argument(
@@ -1005,7 +1022,9 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "status": manifest["status"],
                 "output_directory": manifest["output_directory"],
-                "manifest": str(Path(manifest["output_directory"]) / "minimal-restore-manifest.json"),
+                "manifest": str(
+                    Path(manifest["output_directory"]) / "minimal-restore-manifest.json"
+                ),
                 "assets_completed": manifest["summary"]["assets_completed"],
                 "hashes_verified": manifest["summary"]["hashes_verified"],
                 "formats_verified": manifest["summary"]["formats_verified"],

@@ -22,7 +22,9 @@ from .safety import (
 
 
 def _safe_stem(path: Path, index: int) -> str:
-    stem = "".join(character if character.isalnum() or character in "._-" else "_" for character in path.stem)
+    stem = "".join(
+        character if character.isalnum() or character in "._-" else "_" for character in path.stem
+    )
     return f"{index:03d}-{stem or 'input'}"
 
 
@@ -48,7 +50,9 @@ def _empty_input_row(raw: str | Path, error: str, status: str = "missing") -> di
     }
 
 
-def _prepare_inputs(raw_inputs: list[str]) -> tuple[list[tuple[Path, dict[str, Any]]], list[dict[str, Any]], list[dict[str, str]]]:
+def _prepare_inputs(
+    raw_inputs: list[str],
+) -> tuple[list[tuple[Path, dict[str, Any]]], list[dict[str, Any]], list[dict[str, str]]]:
     valid: list[tuple[Path, dict[str, Any]]] = []
     rows: list[dict[str, Any]] = []
     failures: list[dict[str, str]] = []
@@ -100,13 +104,17 @@ def _audit_inputs(input_rows: list[dict[str, Any]]) -> list[dict[str, str]]:
             row["source_sha256_after"] = None
             row["source_unchanged"] = False
             row["error"] = row["error"] or str(exc)
-            failures.append(_failure(row["path"], f"source could not be re-hashed: {exc}", "source-audit"))
+            failures.append(
+                _failure(row["path"], f"source could not be re-hashed: {exc}", "source-audit")
+            )
             continue
         row["source_sha256_after"] = after
         row["sha256"] = after
         row["source_unchanged"] = after == before
         if after != before:
-            failures.append(_failure(row["path"], "source changed during extraction", "source-audit"))
+            failures.append(
+                _failure(row["path"], "source changed during extraction", "source-audit")
+            )
     return failures
 
 
@@ -119,7 +127,9 @@ def _overall_source_state(input_rows: list[dict[str, Any]]) -> bool | None:
     return None
 
 
-def _normalized_config(profile: str | None, strict: bool | None, limits: dict[str, int | float]) -> dict[str, Any]:
+def _normalized_config(
+    profile: str | None, strict: bool | None, limits: dict[str, int | float]
+) -> dict[str, Any]:
     return {"profile": profile, "strict": strict, "limits": dict(limits)}
 
 
@@ -139,7 +149,12 @@ def _resume_key(input_rows: list[dict[str, Any]], normalized_config: dict[str, A
 def _claims(source_unchanged: bool | None) -> list[dict[str, str]]:
     if source_unchanged is True:
         return [{"claim": "source files were read without modification", "certainty": "fact"}]
-    return [{"claim": "source stability was not established for every requested input", "certainty": "unknown"}]
+    return [
+        {
+            "claim": "source stability was not established for every requested input",
+            "certainty": "unknown",
+        }
+    ]
 
 
 def _build_manifest(
@@ -214,7 +229,9 @@ def _failed_manifest(
     )
 
 
-def _extract_zip(source: Path, destination: Path, limits: dict[str, int | float]) -> list[dict[str, Any]]:
+def _extract_zip(
+    source: Path, destination: Path, limits: dict[str, int | float]
+) -> list[dict[str, Any]]:
     with zipfile.ZipFile(source) as archive:
         infos = archive.infolist()
         plan = validate_zip_infos(
@@ -320,7 +337,9 @@ def _manifest_entry(
     }
 
 
-def _validate_report_path(report: str | Path | None, destination: Path, sources: list[Path]) -> Path | None:
+def _validate_report_path(
+    report: str | Path | None, destination: Path, sources: list[Path]
+) -> Path | None:
     if report is None:
         return None
     report_path = resolve_output_path(report)
@@ -571,7 +590,9 @@ def _extract_to_staging(
     except (OSError, ExtractionError, zipfile.BadZipFile) as exc:
         failures.extend(_audit_inputs(input_rows))
         failures.append(_failure(str(exc), str(exc), "run"))
-        return _failed_manifest(raw_inputs, destination, limits, failures, input_rows, profile, strict, resume)
+        return _failed_manifest(
+            raw_inputs, destination, limits, failures, input_rows, profile, strict, resume
+        )
     finally:
         if str(temporary) and temporary != Path() and temporary.exists():
             shutil.rmtree(temporary, ignore_errors=True)
@@ -594,8 +615,12 @@ def _resume_existing(
     try:
         existing = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        resume_failures.append(_failure(str(manifest_path), f"cannot read existing manifest: {exc}", "resume"))
-        result = _failed_manifest([], destination, limits, resume_failures, input_rows, profile, strict, True)
+        resume_failures.append(
+            _failure(str(manifest_path), f"cannot read existing manifest: {exc}", "resume")
+        )
+        result = _failed_manifest(
+            [], destination, limits, resume_failures, input_rows, profile, strict, True
+        )
         _write_failure_report(report_path, result)
         return result
 
@@ -608,18 +633,30 @@ def _resume_existing(
     if tree_errors:
         resume_failures.extend(_failure(str(destination), error, "resume") for error in tree_errors)
     if not isinstance(existing, dict) or existing.get("operation") != "extract":
-        resume_failures.append(_failure(str(manifest_path), "existing manifest is not an extract manifest", "resume"))
+        resume_failures.append(
+            _failure(str(manifest_path), "existing manifest is not an extract manifest", "resume")
+        )
     else:
         existing_outputs = existing.get("outputs")
         committed = isinstance(existing_outputs, dict) and existing_outputs.get("committed", False)
         if existing.get("status") == "failed" or not committed:
-            resume_failures.append(_failure(str(manifest_path), "existing run is not resumable", "resume"))
+            resume_failures.append(
+                _failure(str(manifest_path), "existing run is not resumable", "resume")
+            )
         if existing.get("tool") != tool_metadata():
-            resume_failures.append(_failure(str(manifest_path), "tool metadata does not match", "resume"))
+            resume_failures.append(
+                _failure(str(manifest_path), "tool metadata does not match", "resume")
+            )
         if existing.get("normalized_config") != normalized:
-            resume_failures.append(_failure(str(manifest_path), "normalized configuration does not match", "resume"))
+            resume_failures.append(
+                _failure(str(manifest_path), "normalized configuration does not match", "resume")
+            )
         if existing.get("resume_key") != expected_key:
-            resume_failures.append(_failure(str(manifest_path), "source/config/tool resume key does not match", "resume"))
+            resume_failures.append(
+                _failure(
+                    str(manifest_path), "source/config/tool resume key does not match", "resume"
+                )
+            )
         stored_inputs = existing.get("inputs")
         current_signature = [(row["path"], row["source_sha256_before"]) for row in input_rows]
         stored_signature = (
@@ -628,10 +665,14 @@ def _resume_existing(
             else []
         )
         if stored_signature != current_signature:
-            resume_failures.append(_failure(str(manifest_path), "input source hash set does not match", "resume"))
+            resume_failures.append(
+                _failure(str(manifest_path), "input source hash set does not match", "resume")
+            )
 
     if resume_failures:
-        result = _failed_manifest([], destination, limits, resume_failures, input_rows, profile, strict, True)
+        result = _failed_manifest(
+            [], destination, limits, resume_failures, input_rows, profile, strict, True
+        )
         _write_failure_report(report_path, result)
         return result
     return existing
@@ -658,22 +699,36 @@ def extract_inputs(
 
     if failures and strict:
         failures.extend(_audit_inputs(input_rows))
-        result = _failed_manifest(raw_inputs, destination, effective_limits, failures, input_rows, profile, strict, resume)
+        result = _failed_manifest(
+            raw_inputs, destination, effective_limits, failures, input_rows, profile, strict, resume
+        )
         _write_failure_report(report_path, result)
         return result
     if not valid:
         failures.extend(_audit_inputs(input_rows))
-        result = _failed_manifest(raw_inputs, destination, effective_limits, failures, input_rows, profile, strict, resume)
+        result = _failed_manifest(
+            raw_inputs, destination, effective_limits, failures, input_rows, profile, strict, resume
+        )
         _write_failure_report(report_path, result)
         return result
 
     if destination.exists():
         if resume:
             failures.extend(_audit_inputs(input_rows))
-            return _resume_existing(destination, input_rows, failures, profile, strict, effective_limits, report_path)
-        failures.append(_failure(str(destination), "output already exists; use a new run directory or --resume", "preflight"))
+            return _resume_existing(
+                destination, input_rows, failures, profile, strict, effective_limits, report_path
+            )
+        failures.append(
+            _failure(
+                str(destination),
+                "output already exists; use a new run directory or --resume",
+                "preflight",
+            )
+        )
         failures.extend(_audit_inputs(input_rows))
-        result = _failed_manifest(raw_inputs, destination, effective_limits, failures, input_rows, profile, strict, resume)
+        result = _failed_manifest(
+            raw_inputs, destination, effective_limits, failures, input_rows, profile, strict, resume
+        )
         _write_failure_report(report_path, result)
         return result
 

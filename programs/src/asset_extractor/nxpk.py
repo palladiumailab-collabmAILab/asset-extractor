@@ -61,9 +61,7 @@ def _read_entries(
             and count <= (size - candidate_24) // 32
         )
         valid_20 = (
-            candidate_20 >= 20
-            and candidate_20 <= size
-            and count <= (size - candidate_20) // 32
+            candidate_20 >= 20 and candidate_20 <= size and count <= (size - candidate_20) // 32
         )
         if valid_24 and valid_20:
             raise ExtractionError("ambiguous NXPK header/index layout")
@@ -121,7 +119,9 @@ def _decompress_exact(data: bytes, expected: int, index: int) -> bytes:
     except zlib.error as exc:
         raise ExtractionError(f"NXPK zlib decompression failed at entry {index}") from exc
     if not decoder.eof or decoder.unused_data:
-        raise ExtractionError(f"NXPK zlib stream is incomplete or has trailing data at entry {index}")
+        raise ExtractionError(
+            f"NXPK zlib stream is incomplete or has trailing data at entry {index}"
+        )
     if len(result) != expected:
         raise ExtractionError(f"NXPK uncompressed size mismatch at entry {index}")
     return result
@@ -137,7 +137,10 @@ def _read_payload(handle: Any, entry: tuple[int, ...], index: int) -> tuple[byte
             f"NXPK actual read length mismatch at entry {index}: {actual_read} != {packed}"
         )
     if flags & 0x10000:
-        data = bytes(value ^ ((150 + position) % 256) for position, value in enumerate(data[:128])) + data[128:]
+        data = (
+            bytes(value ^ ((150 + position) % 256) for position, value in enumerate(data[:128]))
+            + data[128:]
+        )
     if flags & 0xFFFF == 1:
         data = _decompress_exact(data, unpacked, index)
     if len(data) != unpacked:

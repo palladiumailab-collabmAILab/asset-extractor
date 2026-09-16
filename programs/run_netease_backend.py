@@ -93,12 +93,14 @@ def _normalized_external_entries(
         else:
             relative_output = None
         normalized = {
-            "asset_id": config_hash({
-                "source_sha256": source_sha256,
-                "entry_index": row.get("ordinal"),
-                "payload_id": row.get("payload_id"),
-                "offset": row.get("offset"),
-            }),
+            "asset_id": config_hash(
+                {
+                    "source_sha256": source_sha256,
+                    "entry_index": row.get("ordinal"),
+                    "payload_id": row.get("payload_id"),
+                    "offset": row.get("offset"),
+                }
+            ),
             "source": source.name,
             "source_sha256": source_sha256,
             "entry_index": row.get("ordinal"),
@@ -110,7 +112,9 @@ def _normalized_external_entries(
             "backend": backend,
             "backend_revision": result.get("tool_metadata", {}).get("commit"),
             "logical_path": logical_path,
-            "logical_path_status": "backend-provided" if logical_path else "unavailable-from-backend",
+            "logical_path_status": "backend-provided"
+            if logical_path
+            else "unavailable-from-backend",
             "output_path": relative_output,
             "output_sha256": row.get("output_sha256"),
             "bytes": row.get("actual_size"),
@@ -120,11 +124,13 @@ def _normalized_external_entries(
         }
         entries.append(normalized)
         if normalized["status"] != "extracted":
-            failures.append({
-                "entry_index": normalized["entry_index"],
-                "stage": "dedicated-backend",
-                "error": normalized["unresolved_reason"] or "backend extraction failed",
-            })
+            failures.append(
+                {
+                    "entry_index": normalized["entry_index"],
+                    "stage": "dedicated-backend",
+                    "error": normalized["unresolved_reason"] or "backend extraction failed",
+                }
+            )
     return entries, failures
 
 
@@ -145,7 +151,9 @@ def _validate_backend_request(
         raise ExtractionError(f"source must be an existing regular non-symlink file: {source}")
     if output.exists():
         raise ExtractionError(f"run root already exists: {output}")
-    selected, reason = select_backend(requested_backend, source, game_profile, neox_root, neox_tools_root)
+    selected, reason = select_backend(
+        requested_backend, source, game_profile, neox_root, neox_tools_root
+    )
     if selected == "neoxtractor":
         if neox_root is None or neox_config is None or not neox_config.is_file():
             raise ExtractionError("NeoXtractor checkout/config is unavailable")
@@ -184,8 +192,20 @@ def _build_external_manifest(
     entries, failures = _normalized_external_entries(source, before, selected, result, staging)
     successes = sum(item["status"] == "extracted" for item in entries)
     if before != after:
-        failures.append({"entry_index": None, "stage": "source-audit", "error": "source changed during extraction"})
-    status = "complete" if entries and successes == len(entries) and not failures else "partial" if successes else "failed"
+        failures.append(
+            {
+                "entry_index": None,
+                "stage": "source-audit",
+                "error": "source changed during extraction",
+            }
+        )
+    status = (
+        "complete"
+        if entries and successes == len(entries) and not failures
+        else "partial"
+        if successes
+        else "failed"
+    )
     return {
         "schema_version": 1,
         "operation": "extract-netease-backend",
@@ -204,16 +224,22 @@ def _build_external_manifest(
             "game_profile": game_profile,
         },
         "backend": result.get("tool_metadata", {}),
-        "configuration_sha256": config_hash({
-            "requested_backend": requested_backend,
-            "selected_backend": selected,
-            "game_profile": game_profile,
-            "backend_revision": result.get("tool_metadata", {}).get("commit"),
-            "backend_config_sha256": result.get("tool_metadata", {}).get("config_sha256"),
-        }),
+        "configuration_sha256": config_hash(
+            {
+                "requested_backend": requested_backend,
+                "selected_backend": selected,
+                "game_profile": game_profile,
+                "backend_revision": result.get("tool_metadata", {}).get("commit"),
+                "backend_config_sha256": result.get("tool_metadata", {}).get("config_sha256"),
+            }
+        ),
         "index": {key: value for key, value in index.items() if key != "entries"},
         "entries": entries,
-        "summary": {"entries": len(entries), "extracted": successes, "failed": len(entries) - successes},
+        "summary": {
+            "entries": len(entries),
+            "extracted": successes,
+            "failed": len(entries) - successes,
+        },
         "failures": failures,
         "safety": {
             "source_read_only": True,
@@ -241,7 +267,9 @@ def _run_external_backend(
 
     index = run_pilot.parse_index(source)
     output.parent.mkdir(parents=True, exist_ok=True)
-    staging: Path | None = Path(tempfile.mkdtemp(prefix=f".{output.name}.partial-", dir=output.parent))
+    staging: Path | None = Path(
+        tempfile.mkdtemp(prefix=f".{output.name}.partial-", dir=output.parent)
+    )
     try:
         if selected == "neoxtractor":
             result = run_pilot.run_neox(source, staging / "raw", index, neox_root, neox_config)
@@ -309,11 +337,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("source", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--backend", choices=BACKENDS, default="auto")
-    parser.add_argument("--game-profile", choices=("generic", "onmyoji"), default="onmyoji", help="use generic to disable game-specific auto selection")
+    parser.add_argument(
+        "--game-profile",
+        choices=("generic", "onmyoji"),
+        default="onmyoji",
+        help="use generic to disable game-specific auto selection",
+    )
     parser.add_argument("--neoxtractor-root", type=Path)
     parser.add_argument("--neoxtractor-config", type=Path)
     parser.add_argument("--neox-tools-root", type=Path)
-    parser.add_argument("--backend-python", type=Path, help="Python runtime containing the selected backend dependencies")
+    parser.add_argument(
+        "--backend-python",
+        type=Path,
+        help="Python runtime containing the selected backend dependencies",
+    )
     parser.add_argument("--_backend-runtime-active", action="store_true", help=argparse.SUPPRESS)
     return parser
 
@@ -322,19 +359,40 @@ def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(raw_argv)
     try:
-        neox_root = _checkout(args.neoxtractor_root, "ASSET_EXTRACTOR_NEOXTRACTOR_ROOT", DEFAULT_NEOX_ROOT)
-        neox_tools_root = _checkout(args.neox_tools_root, "ASSET_EXTRACTOR_NEOX_TOOLS_ROOT", PROGRAMS_ROOT / "vendor" / "neox_tools")
-        selected, _ = select_backend(args.backend, args.source.expanduser().resolve(), args.game_profile, neox_root, neox_tools_root)
+        neox_root = _checkout(
+            args.neoxtractor_root, "ASSET_EXTRACTOR_NEOXTRACTOR_ROOT", DEFAULT_NEOX_ROOT
+        )
+        neox_tools_root = _checkout(
+            args.neox_tools_root,
+            "ASSET_EXTRACTOR_NEOX_TOOLS_ROOT",
+            PROGRAMS_ROOT / "vendor" / "neox_tools",
+        )
+        selected, _ = select_backend(
+            args.backend,
+            args.source.expanduser().resolve(),
+            args.game_profile,
+            neox_root,
+            neox_tools_root,
+        )
         runtime = args.backend_python
         if runtime is None and selected == "neoxtractor" and DEFAULT_NEOX_PYTHON.is_file():
             runtime = DEFAULT_NEOX_PYTHON
-        if runtime is not None and selected in {"neoxtractor", "neox-tools"} and not args._backend_runtime_active:
+        if (
+            runtime is not None
+            and selected in {"neoxtractor", "neox-tools"}
+            and not args._backend_runtime_active
+        ):
             runtime = runtime.expanduser().resolve()
             if not runtime.is_file():
                 raise ExtractionError(f"backend Python runtime is unavailable: {runtime}")
             if runtime != Path(sys.executable).resolve():
                 completed = subprocess.run(
-                    [str(runtime), str(Path(__file__).resolve()), *raw_argv, "--_backend-runtime-active"],
+                    [
+                        str(runtime),
+                        str(Path(__file__).resolve()),
+                        *raw_argv,
+                        "--_backend-runtime-active",
+                    ],
                     check=False,
                     timeout=BACKEND_RUNTIME_TIMEOUT_SECONDS,
                 )
@@ -352,7 +410,11 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ExtractionError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print(f"backend extraction failed: {exc}", file=sys.stderr)
         return 2
-    print(json.dumps({"status": manifest["status"], "output": str(args.output.resolve())}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {"status": manifest["status"], "output": str(args.output.resolve())}, ensure_ascii=False
+        )
+    )
     return {"complete": 0, "partial": 1, "failed": 2}.get(manifest["status"], 2)
 
 

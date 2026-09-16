@@ -51,9 +51,7 @@ def probe_bytes(sample: bytes) -> dict[str, Any]:
         return _result("ktx", "texture", "image/ktx")
     if sample.startswith(b"\xabKTX 20\xbb\r\n\x1a\n"):
         return _result("ktx2", "texture", "image/ktx2")
-    if sample.startswith(b"PVR\x03") or (
-        len(sample) >= 52 and sample[:4] == b"\x03\x00\x00\x00"
-    ):
+    if sample.startswith(b"PVR\x03") or (len(sample) >= 52 and sample[:4] == b"\x03\x00\x00\x00"):
         return _result("pvr", "texture", "image/x-pvr")
 
     if len(sample) >= 12 and sample[4:8] == b"ftyp":

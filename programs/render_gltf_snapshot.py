@@ -28,7 +28,12 @@ def snapshot_caption(document: dict[str, Any], source: Path, requested: str | No
             raise ValueError("snapshot title must not be empty")
         return caption
     meshes = document.get("meshes")
-    if isinstance(meshes, list) and meshes and isinstance(meshes[0], dict) and meshes[0].get("name"):
+    if (
+        isinstance(meshes, list)
+        and meshes
+        and isinstance(meshes[0], dict)
+        and meshes[0].get("name")
+    ):
         return f"{meshes[0]['name']} / textured glTF"
     return f"{source.stem} / textured glTF"
 
@@ -82,14 +87,20 @@ def _load_scene(source: Path) -> tuple[Any, Any, dict[str, Any]]:
     render_scene.add(camera, pose=camera_pose)
     light = pyrender.DirectionalLight(color=np.ones(3), intensity=3.0)
     render_scene.add(light, pose=camera_pose)
-    return render_scene, pyrender, {
-        "projection": "pyrender perspective camera",
-        "geometry_count": len(loaded.geometry),
-        "extent": extent,
-    }
+    return (
+        render_scene,
+        pyrender,
+        {
+            "projection": "pyrender perspective camera",
+            "geometry_count": len(loaded.geometry),
+            "extent": extent,
+        },
+    )
 
 
-def render_snapshot(source: Path, width: int = 768, height: int = 768) -> tuple[Any, dict[str, Any]]:
+def render_snapshot(
+    source: Path, width: int = 768, height: int = 768
+) -> tuple[Any, dict[str, Any]]:
     """Render one glTF and return an RGB array plus provenance."""
 
     import numpy as np  # type: ignore[import-not-found]
@@ -134,7 +145,9 @@ def main(argv: list[str] | None = None) -> int:
             "renderer": "pyrender",
         }
     )
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    report_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     print(json.dumps(report, ensure_ascii=False))
     return 0
 

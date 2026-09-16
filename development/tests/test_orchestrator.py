@@ -169,16 +169,18 @@ class OrchestratorTests(unittest.TestCase):
                         "sha256_after": source_sha,
                         "unchanged": True,
                     },
-                    "entries": [{
-                        "entry_index": 0,
-                        "payload_id": 7,
-                        "payload_offset": 64,
-                        "output_path": "raw/asset.png",
-                        "output_sha256": sha256_file(payload),
-                        "bytes": payload.stat().st_size,
-                        "status": "extracted",
-                        "logical_path": "model/s3_hairen/s3_hairen.png",
-                    }],
+                    "entries": [
+                        {
+                            "entry_index": 0,
+                            "payload_id": 7,
+                            "payload_offset": 64,
+                            "output_path": "raw/asset.png",
+                            "output_sha256": sha256_file(payload),
+                            "bytes": payload.stat().st_size,
+                            "status": "extracted",
+                            "logical_path": "model/s3_hairen/s3_hairen.png",
+                        }
+                    ],
                     "failures": [],
                 }
                 (request.output / "backend-run-manifest.json").write_text(
@@ -187,7 +189,9 @@ class OrchestratorTests(unittest.TestCase):
                 return manifest
 
             config = {"backend": "neoxtractor", "profile": "auto"}
-            with patch("asset_extractor.orchestrator.extract_with_backend", side_effect=fake_extract):
+            with patch(
+                "asset_extractor.orchestrator.extract_with_backend", side_effect=fake_extract
+            ):
                 extraction = _extract_sources(config, root, sources, extraction_root)
 
             self.assertEqual(extraction["operation"], "extract-backend-collection")

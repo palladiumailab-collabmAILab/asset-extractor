@@ -86,10 +86,7 @@ def validate_document(
     validator = _jsonschema_validator(load_schema(name, schema_root))
     errors = validator.iter_errors(document)
     ordered = sorted(errors, key=lambda error: tuple(str(part) for part in error.absolute_path))
-    return [
-        f"{name}{_format_path(error.absolute_path)}: {error.message}"
-        for error in ordered
-    ]
+    return [f"{name}{_format_path(error.absolute_path)}: {error.message}" for error in ordered]
 
 
 def check_schema(name: str, schema_root: Path | None = None) -> None:

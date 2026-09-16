@@ -18,25 +18,70 @@ from .errors import ExtractionError
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _TOP_LEVEL_KEYS = {
-    "schema_version", "operation", "created_at", "status", "tool", "profile",
-    "strict", "resume", "limits", "normalized_config", "config_sha256",
-    "resume_key", "source_unchanged", "inputs", "outputs", "entries", "failures",
+    "schema_version",
+    "operation",
+    "created_at",
+    "status",
+    "tool",
+    "profile",
+    "strict",
+    "resume",
+    "limits",
+    "normalized_config",
+    "config_sha256",
+    "resume_key",
+    "source_unchanged",
+    "inputs",
+    "outputs",
+    "entries",
+    "failures",
     "claims",
 }
 _INPUT_KEYS = {
-    "path", "name", "kind", "detection", "status", "bytes", "sha256",
-    "source_sha256_before", "source_sha256_after", "source_unchanged", "error", "entries",
+    "path",
+    "name",
+    "kind",
+    "detection",
+    "status",
+    "bytes",
+    "sha256",
+    "source_sha256_before",
+    "source_sha256_after",
+    "source_unchanged",
+    "error",
+    "entries",
 }
 _OUTPUT_KEYS = {"directory", "files", "count", "committed"}
 _FILE_KEYS = {"path", "bytes", "sha256"}
 _ENTRY_KEYS = {
-    "source", "path", "output_path", "kind", "status", "bytes", "sha256", "index",
-    "payload_id", "offset", "packed_bytes", "declared_unpacked_bytes", "actual_read_bytes",
-    "actual_unpacked_bytes", "bounds_checked", "size_checked", "compression_flag", "encrypted",
+    "source",
+    "path",
+    "output_path",
+    "kind",
+    "status",
+    "bytes",
+    "sha256",
+    "index",
+    "payload_id",
+    "offset",
+    "packed_bytes",
+    "declared_unpacked_bytes",
+    "actual_read_bytes",
+    "actual_unpacked_bytes",
+    "bounds_checked",
+    "size_checked",
+    "compression_flag",
+    "encrypted",
 }
 _ENTRY_OPTIONAL_KEYS = {
-    "asset_id", "source_input_index", "source_sha256", "backend", "logical_path",
-    "logical_path_status", "asset_type", "parent_asset_id",
+    "asset_id",
+    "source_input_index",
+    "source_sha256",
+    "backend",
+    "logical_path",
+    "logical_path_status",
+    "asset_type",
+    "parent_asset_id",
 }
 _FAILURE_KEYS = {"path", "error", "stage"}
 _CLAIM_KEYS = {"claim", "certainty"}
@@ -82,7 +127,9 @@ def _check_sha(value: Any, label: str, errors: list[str], nullable: bool = True)
         errors.append(f"{label} must be a lowercase SHA-256 hex string")
 
 
-def _check_nonnegative_int(value: Any, label: str, errors: list[str], nullable: bool = False) -> None:
+def _check_nonnegative_int(
+    value: Any, label: str, errors: list[str], nullable: bool = False
+) -> None:
     if value is None and nullable:
         return
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
@@ -275,8 +322,14 @@ def _validate_entry(item: Any, index: int, errors: list[str]) -> None:
     _check_nonnegative_int(item["bytes"], f"{label}.bytes", errors)
     _check_sha(item["sha256"], f"{label}.sha256", errors, nullable=False)
     for key in (
-        "index", "payload_id", "offset", "packed_bytes", "declared_unpacked_bytes",
-        "actual_read_bytes", "actual_unpacked_bytes", "compression_flag",
+        "index",
+        "payload_id",
+        "offset",
+        "packed_bytes",
+        "declared_unpacked_bytes",
+        "actual_read_bytes",
+        "actual_unpacked_bytes",
+        "compression_flag",
     ):
         _check_nonnegative_int(item[key], f"{label}.{key}", errors, nullable=True)
     for key in ("bounds_checked", "size_checked", "encrypted"):
@@ -294,8 +347,10 @@ def _validate_entry(item: Any, index: int, errors: list[str]) -> None:
         _check_sha(item["source_sha256"], f"{label}.source_sha256", errors, nullable=False)
     if "backend" in item and (not isinstance(item["backend"], str) or not item["backend"]):
         errors.append(f"{label}.backend must be a non-empty string")
-    if "logical_path" in item and item["logical_path"] is not None and (
-        not isinstance(item["logical_path"], str) or not item["logical_path"]
+    if (
+        "logical_path" in item
+        and item["logical_path"] is not None
+        and (not isinstance(item["logical_path"], str) or not item["logical_path"])
     ):
         errors.append(f"{label}.logical_path must be a non-empty string or null")
     for key in ("logical_path_status", "asset_type"):
@@ -383,10 +438,14 @@ def _validate_state_constraints(
 
     if manifest["status"] == "complete" and manifest["failures"]:
         errors.append("complete manifests cannot contain failures")
-    if manifest["status"] == "partial" and not manifest["failures"] and not any(
-        item.get("status") in {"unsupported", "missing"} for item in inputs
+    if (
+        manifest["status"] == "partial"
+        and not manifest["failures"]
+        and not any(item.get("status") in {"unsupported", "missing"} for item in inputs)
     ):
-        errors.append("partial manifests must contain failures or an explicitly unsupported/missing input")
+        errors.append(
+            "partial manifests must contain failures or an explicitly unsupported/missing input"
+        )
     if manifest["status"] == "failed" and safe_files:
         errors.append("failed manifests cannot record committed output files")
 
@@ -405,7 +464,5 @@ def validate_manifest(manifest: Any, output_root: str | Path | None = None) -> l
     outputs, safe_files = _validate_outputs(manifest, errors)
     entries = _validate_entries(manifest, errors)
     _validate_failures_and_claims(manifest, errors)
-    _validate_state_constraints(
-        manifest, inputs, outputs, safe_files, entries, errors, output_root
-    )
+    _validate_state_constraints(manifest, inputs, outputs, safe_files, entries, errors, output_root)
     return errors

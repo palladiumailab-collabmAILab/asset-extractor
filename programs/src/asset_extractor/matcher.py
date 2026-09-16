@@ -16,7 +16,19 @@ SEPARATOR_RE = re.compile(r"[^a-z0-9]+")
 VARIANT_PREFIX_RE = re.compile(r"^(?:s|c|v|skin|costume|variant)\d+$")
 VARIANT_SUFFIXES = {"show", "display", "preview", "icon", "portrait", "head", "body"}
 MODEL_TYPES = {"mesh", "model", "gltf", "glb", "fbx", "obj"}
-IMAGE_TYPES = {"texture", "sprite", "illustration", "image", "png", "jpg", "jpeg", "tga", "ktx", "dds", "pvr"}
+IMAGE_TYPES = {
+    "texture",
+    "sprite",
+    "illustration",
+    "image",
+    "png",
+    "jpg",
+    "jpeg",
+    "tga",
+    "ktx",
+    "dds",
+    "pvr",
+}
 
 
 def normalize_token(value: str) -> str:
@@ -31,7 +43,11 @@ def path_tokens(logical_path: str) -> list[tuple[str, str]]:
     seen: set[tuple[str, str]] = set()
 
     def add(method: str, value: str) -> None:
-        token = unicodedata.normalize("NFKC", value).casefold() if method == "exact" else normalize_token(value)
+        token = (
+            unicodedata.normalize("NFKC", value).casefold()
+            if method == "exact"
+            else normalize_token(value)
+        )
         pair = (method, token)
         if token and pair not in seen:
             result.append(pair)
@@ -62,8 +78,16 @@ def _aliases(value: Any) -> list[str]:
 
 
 def _entity(raw: dict[str, Any], line: int) -> dict[str, Any]:
-    entity_id = str(raw.get("entity_id") or raw.get("character_id") or raw.get("asset_token") or raw.get("romanized") or "").strip()
-    canonical = str(raw.get("asset_token") or raw.get("romanized") or raw.get("pinyin") or entity_id).strip()
+    entity_id = str(
+        raw.get("entity_id")
+        or raw.get("character_id")
+        or raw.get("asset_token")
+        or raw.get("romanized")
+        or ""
+    ).strip()
+    canonical = str(
+        raw.get("asset_token") or raw.get("romanized") or raw.get("pinyin") or entity_id
+    ).strip()
     if not entity_id or not canonical:
         raise ExtractionError(f"dictionary row {line} lacks entity_id and canonical token")
     aliases = _aliases(raw.get("aliases"))
@@ -77,10 +101,26 @@ def _entity(raw: dict[str, Any], line: int) -> dict[str, Any]:
         "reading": str(raw.get("reading") or "").strip(),
         "romanized": str(raw.get("romanized") or raw.get("pinyin") or canonical).strip(),
         "rarity": str(raw.get("rarity") or "").strip(),
-        "metadata": {key: value for key, value in raw.items() if key not in {
-            "entity_id", "character_id", "entity_type", "asset_token", "aliases",
-            "name_ja", "japanese", "name_zh", "chinese", "reading", "romanized", "pinyin", "rarity",
-        }},
+        "metadata": {
+            key: value
+            for key, value in raw.items()
+            if key
+            not in {
+                "entity_id",
+                "character_id",
+                "entity_type",
+                "asset_token",
+                "aliases",
+                "name_ja",
+                "japanese",
+                "name_zh",
+                "chinese",
+                "reading",
+                "romanized",
+                "pinyin",
+                "rarity",
+            }
+        },
     }
 
 
@@ -91,10 +131,14 @@ def load_dictionary(path: Path) -> list[dict[str, Any]]:
             rows = document.get("entities") if isinstance(document, dict) else document
             if not isinstance(rows, list):
                 raise ExtractionError("JSON dictionary must be an array or contain entities[]")
-            entities = [_entity(row, index) for index, row in enumerate(rows, 1) if isinstance(row, dict)]
+            entities = [
+                _entity(row, index) for index, row in enumerate(rows, 1) if isinstance(row, dict)
+            ]
         else:
             with path.open("r", encoding="utf-8-sig", newline="") as stream:
-                entities = [_entity(dict(row), index) for index, row in enumerate(csv.DictReader(stream), 2)]
+                entities = [
+                    _entity(dict(row), index) for index, row in enumerate(csv.DictReader(stream), 2)
+                ]
     except (OSError, json.JSONDecodeError, csv.Error) as exc:
         raise ExtractionError(f"cannot read dictionary {path}: {exc}") from exc
     if not entities:
@@ -132,16 +176,41 @@ def load_assets(path: Path) -> list[dict[str, Any]]:
             raise ExtractionError(f"asset row {index} must be an object")
         logical_path = row.get("logical_path") or row.get("source_path") or row.get("path")
         if not isinstance(logical_path, str) or not logical_path.strip():
-            assets.append({**row, "_input_index": index, "_logical_path": None, "_asset_type": str(row.get("asset_type") or row.get("kind") or "unknown")})
+            assets.append(
+                {
+                    **row,
+                    "_input_index": index,
+                    "_logical_path": None,
+                    "_asset_type": str(row.get("asset_type") or row.get("kind") or "unknown"),
+                }
+            )
             continue
-        assets.append({**row, "_input_index": index, "_logical_path": logical_path.replace("\\", "/"), "_asset_type": str(row.get("asset_type") or row.get("kind") or PurePosixPath(logical_path).suffix.lstrip(".") or "unknown")})
+        assets.append(
+            {
+                **row,
+                "_input_index": index,
+                "_logical_path": logical_path.replace("\\", "/"),
+                "_asset_type": str(
+                    row.get("asset_type")
+                    or row.get("kind")
+                    or PurePosixPath(logical_path).suffix.lstrip(".")
+                    or "unknown"
+                ),
+            }
+        )
     return assets
 
 
 def _match_one(asset: dict[str, Any], entities: list[dict[str, Any]]) -> dict[str, Any]:
     logical_path = asset["_logical_path"]
     if logical_path is None:
-        return {"entity": None, "matched_key": None, "match_method": "unmatched", "match_confidence": "unmatched", "evidence": "logical_path_missing"}
+        return {
+            "entity": None,
+            "matched_key": None,
+            "match_method": "unmatched",
+            "match_confidence": "unmatched",
+            "evidence": "logical_path_missing",
+        }
     tokens = path_tokens(logical_path)
     candidates: list[tuple[int, str, dict[str, Any], str]] = []
     for entity in entities:
@@ -156,13 +225,31 @@ def _match_one(asset: dict[str, Any], entities: list[dict[str, Any]]) -> dict[st
             elif token in aliases:
                 candidates.append((2, "alias", entity, aliases[token]))
     if not candidates:
-        return {"entity": None, "matched_key": None, "match_method": "unmatched", "match_confidence": "unmatched", "evidence": "no_dictionary_token_match"}
+        return {
+            "entity": None,
+            "matched_key": None,
+            "match_method": "unmatched",
+            "match_confidence": "unmatched",
+            "evidence": "no_dictionary_token_match",
+        }
     best_priority = min(item[0] for item in candidates)
     best = {item[2]["entity_id"]: item for item in candidates if item[0] == best_priority}
     if len(best) != 1:
-        return {"entity": None, "matched_key": None, "match_method": "heuristic", "match_confidence": "ambiguous", "evidence": "multiple_entities_share_path_tokens"}
+        return {
+            "entity": None,
+            "matched_key": None,
+            "match_method": "heuristic",
+            "match_confidence": "ambiguous",
+            "evidence": "multiple_entities_share_path_tokens",
+        }
     _, method, entity, key = next(iter(best.values()))
-    return {"entity": entity, "matched_key": key, "match_method": method, "match_confidence": method, "evidence": "logical_path_name"}
+    return {
+        "entity": entity,
+        "matched_key": key,
+        "match_method": method,
+        "match_confidence": method,
+        "evidence": "logical_path_name",
+    }
 
 
 def asset_family(asset_type: str) -> str:
@@ -224,12 +311,20 @@ def build_match_manifest(dictionary_path: Path, asset_path: Path) -> dict[str, A
             "automatic_methods": ["exact", "normalized", "alias"],
             "heuristic_is_not_automatic": True,
         },
-        "configuration_sha256": config_hash({"normalizer": "nfkc-casefold-separator-v1", "variant_prefixes": "s/c/v/skin/costume/variant-number,j", "variant_suffixes": sorted(VARIANT_SUFFIXES)}),
+        "configuration_sha256": config_hash(
+            {
+                "normalizer": "nfkc-casefold-separator-v1",
+                "variant_prefixes": "s/c/v/skin/costume/variant-number,j",
+                "variant_suffixes": sorted(VARIANT_SUFFIXES),
+            }
+        ),
         "summary": {
             "assets": len(matches),
             "matched": sum(item["entity"] is not None for item in matches),
             "unmatched": sum(item["entity"] is None for item in matches),
-            "paired_3d_image": sum(item["same_name_pair_status"] == "paired-3d-image" for item in matches),
+            "paired_3d_image": sum(
+                item["same_name_pair_status"] == "paired-3d-image" for item in matches
+            ),
         },
         "matches": matches,
     }

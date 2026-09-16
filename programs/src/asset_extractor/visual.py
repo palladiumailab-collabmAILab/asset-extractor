@@ -79,14 +79,20 @@ def compare_images(reference: Path, candidate: Path) -> dict[str, Any]:
         good = [first for first, second in pairs if first.distance < 0.75 * second.distance]
         good_matches = len(good)
         if good_matches >= 4:
-            source_points = numpy_module.float32([reference_keypoints[item.queryIdx].pt for item in good])
-            destination_points = numpy_module.float32([candidate_keypoints[item.trainIdx].pt for item in good])
+            source_points = numpy_module.float32(
+                [reference_keypoints[item.queryIdx].pt for item in good]
+            )
+            destination_points = numpy_module.float32(
+                [candidate_keypoints[item.trainIdx].pt for item in good]
+            )
             _homography, mask = cv2_module.findHomography(
                 source_points, destination_points, cv2_module.RANSAC, 5.0
             )
             if mask is not None:
                 inlier_matches = int(mask.ravel().sum())
-    feature_score = min(1.0, inlier_matches / 20.0) if inlier_matches else min(1.0, good_matches / 40.0)
+    feature_score = (
+        min(1.0, inlier_matches / 20.0) if inlier_matches else min(1.0, good_matches / 40.0)
+    )
     score = 0.45 * histogram_score + 0.55 * feature_score
     accepted = score >= MIN_ACCEPTED_SCORE and inlier_matches >= MIN_ACCEPTED_INLIERS
     return {

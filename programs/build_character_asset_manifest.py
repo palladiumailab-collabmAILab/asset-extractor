@@ -167,12 +167,20 @@ def load_character_table(path: Path) -> list[dict[str, str]]:
                         canonical: raw.get(original, "")
                         for original, canonical in zip(fields, mapped_fields)
                     }
-                    rarity = ensure_no_control(normalized_text(raw_by_canonical.get("rarity", "")), "rarity", line).upper()
+                    rarity = ensure_no_control(
+                        normalized_text(raw_by_canonical.get("rarity", "")), "rarity", line
+                    ).upper()
                     if rarity not in ALLOWED_RARITIES:
                         raise CharacterManifestError(f"line {line}: unsupported rarity {rarity!r}")
-                    japanese = ensure_no_control(normalized_text(raw_by_canonical.get("japanese", "")), "japanese", line)
-                    chinese = ensure_no_control(normalized_text(raw_by_canonical.get("chinese", "")), "chinese", line)
-                    pinyin = ensure_no_control(normalized_text(raw_by_canonical.get("pinyin", "")), "pinyin", line)
+                    japanese = ensure_no_control(
+                        normalized_text(raw_by_canonical.get("japanese", "")), "japanese", line
+                    )
+                    chinese = ensure_no_control(
+                        normalized_text(raw_by_canonical.get("chinese", "")), "chinese", line
+                    )
+                    pinyin = ensure_no_control(
+                        normalized_text(raw_by_canonical.get("pinyin", "")), "pinyin", line
+                    )
                     token = re.sub(r"[^a-z0-9]+", "", pinyin.lower())
                     row = {
                         "rarity": rarity,
@@ -196,7 +204,9 @@ def load_character_table(path: Path) -> list[dict[str, str]]:
                 if not row["name_ja"] or not row["name_zh"]:
                     raise CharacterManifestError(f"line {line}: name_ja/name_zh are required")
                 if table_kind == "maintained" and not row["reading"]:
-                    raise CharacterManifestError(f"line {line}: reading is required in the six-column form")
+                    raise CharacterManifestError(
+                        f"line {line}: reading is required in the six-column form"
+                    )
                 if not row["asset_token"] or not TOKEN_RE.fullmatch(row["asset_token"].lower()):
                     raise CharacterManifestError(
                         f"line {line}: asset_token must be a lowercase ASCII path token"
@@ -230,7 +240,9 @@ def _texture_record(
     if texture_sha is None:
         texture_status = "missing_output_sha256"
     elif len(matches) != 1:
-        texture_status = "ambiguous_texture_catalog" if len(matches) > 1 else "missing_texture_catalog"
+        texture_status = (
+            "ambiguous_texture_catalog" if len(matches) > 1 else "missing_texture_catalog"
+        )
     else:
         texture_status = "resolved"
     texture = matches[0] if len(matches) == 1 else {}
@@ -301,7 +313,11 @@ def load_catalogs(paths: Iterable[Path]) -> tuple[list[dict[str, Any]], list[dic
             if mesh_sha is None:
                 continue
             logical_paths = sorted(
-                {normalized_logical_path(value) for value in model.get("mesh_logical_paths", []) if normalized_text(value)},
+                {
+                    normalized_logical_path(value)
+                    for value in model.get("mesh_logical_paths", [])
+                    if normalized_text(value)
+                },
                 key=str.lower,
             )
             if not logical_paths:
@@ -404,9 +420,7 @@ def _normalize_reference(raw: Any, index: int, evidence_path: Path) -> dict[str,
             f"evidence reference {reference_id} needs path, source_ref, or url"
         )
     if kind == "image" and declared_sha is None:
-        raise CharacterManifestError(
-            f"image evidence reference {reference_id} requires a SHA-256"
-        )
+        raise CharacterManifestError(f"image evidence reference {reference_id} requires a SHA-256")
     return {
         "reference_id": reference_id,
         "kind": kind,
@@ -462,9 +476,7 @@ def load_evidence(path: Path | None) -> tuple[dict[str, Any] | None, dict[str, A
         confidence = normalized_text(raw.get("confidence"))
         raw_reference_ids = raw.get("reference_ids", [])
         if not isinstance(raw_reference_ids, list):
-            raise CharacterManifestError(
-                f"evidence variant {index} reference_ids must be a list"
-            )
+            raise CharacterManifestError(f"evidence variant {index} reference_ids must be a list")
         reference_ids = [normalized_text(value).lower() for value in raw_reference_ids]
         if any(not REFERENCE_ID_RE.fullmatch(value) for value in reference_ids):
             raise CharacterManifestError(
@@ -480,11 +492,17 @@ def load_evidence(path: Path | None) -> tuple[dict[str, Any] | None, dict[str, A
                 f"evidence variant {index} references unknown evidence: {missing_reference_ids}"
             )
         if not character_id or not variant_id or not logical_path:
-            raise CharacterManifestError(f"evidence variant {index} lacks character_id/variant_id/logical_path")
+            raise CharacterManifestError(
+                f"evidence variant {index} lacks character_id/variant_id/logical_path"
+            )
         if status not in ALLOWED_VARIANT_STATUS:
-            raise CharacterManifestError(f"evidence variant {index} has unsupported status {status!r}")
+            raise CharacterManifestError(
+                f"evidence variant {index} has unsupported status {status!r}"
+            )
         if status == "verified" and confidence != "high":
-            raise CharacterManifestError(f"verified evidence variant {index} must have high confidence")
+            raise CharacterManifestError(
+                f"verified evidence variant {index} must have high confidence"
+            )
         image_references = [
             references_by_id[value]
             for value in reference_ids
@@ -503,7 +521,9 @@ def load_evidence(path: Path | None) -> tuple[dict[str, Any] | None, dict[str, A
             )
         key = (character_id, logical_path)
         if key in seen:
-            raise CharacterManifestError(f"duplicate evidence path for {character_id}: {logical_path}")
+            raise CharacterManifestError(
+                f"duplicate evidence path for {character_id}: {logical_path}"
+            )
         seen.add(key)
         normalized["variants"].append(
             {
@@ -530,7 +550,9 @@ def token_matches(logical_path: str, token: str) -> bool:
     token_pattern = re.escape(token.lower())
     for segment in normalized_logical_path(logical_path).split("/"):
         segment = segment.rsplit(".", 1)[0]
-        if segment == token.lower() or re.search(rf"(?:^|[^a-z0-9]){token_pattern}(?:$|[^a-z0-9])", segment):
+        if segment == token.lower() or re.search(
+            rf"(?:^|[^a-z0-9]){token_pattern}(?:$|[^a-z0-9])", segment
+        ):
             return True
     return False
 
@@ -539,8 +561,7 @@ def _evidence_lookup(document: dict[str, Any] | None) -> dict[tuple[str, str], d
     if not document:
         return {}
     return {
-        (item["character_id"], item["logical_path"]): item
-        for item in document.get("variants", [])
+        (item["character_id"], item["logical_path"]): item for item in document.get("variants", [])
     }
 
 
@@ -574,7 +595,9 @@ def _build_candidate(
         "publication_status": _candidate_publication_status(model, selection_status),
         "confidence": confidence,
         "visual_reference_ids": evidence.get("reference_ids", []) if evidence else [],
-        "visual_reference_sha256s": evidence.get("visual_reference_sha256s", []) if evidence else [],
+        "visual_reference_sha256s": evidence.get("visual_reference_sha256s", [])
+        if evidence
+        else [],
         "label_ja": evidence.get("label_ja") if evidence else None,
         "evidence_ref": evidence.get("evidence_ref") if evidence else None,
         "evidence_note": evidence.get("evidence_note") if evidence else None,
@@ -596,7 +619,9 @@ def _build_candidate(
     }
 
 
-def _normalized_candidate_row(character: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+def _normalized_candidate_row(
+    character: dict[str, Any], candidate: dict[str, Any]
+) -> dict[str, Any]:
     """Convert one candidate to the stable, tabular publication shape."""
 
     return {
@@ -627,7 +652,9 @@ def _normalized_candidate_row(character: dict[str, Any], candidate: dict[str, An
     }
 
 
-def _candidate_unresolved(character: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any] | None:
+def _candidate_unresolved(
+    character: dict[str, Any], candidate: dict[str, Any]
+) -> dict[str, Any] | None:
     if candidate["publication_status"] == "verified":
         return None
     if candidate["join_status"] != "joined":
@@ -779,14 +806,18 @@ def _load_join_inputs(
     catalog_paths = [path.resolve() for path in catalog_paths]
     output_dir = output_dir.resolve()
     if output_dir.exists():
-        raise CharacterManifestError(f"refusing to overwrite existing output directory: {output_dir}")
+        raise CharacterManifestError(
+            f"refusing to overwrite existing output directory: {output_dir}"
+        )
     if not table_path.is_file() or table_path.is_symlink():
         raise CharacterManifestError(f"character table is missing or unsafe: {table_path}")
 
     rows = load_character_table(table_path)
     input_columns = character_table_columns(table_path)
     model_rows, catalog_info = load_catalogs(catalog_paths)
-    evidence_meta, evidence_document = load_evidence(evidence_path.resolve() if evidence_path else None)
+    evidence_meta, evidence_document = load_evidence(
+        evidence_path.resolve() if evidence_path else None
+    )
     evidence_by_path = _evidence_lookup(evidence_meta)
     return (
         table_path,
@@ -984,9 +1015,19 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="UTF-8 TSV: maintained six columns or rarity/japanese/chinese/pinyin four-column form",
     )
-    parser.add_argument("--catalog", action="append", required=True, type=Path, help="textured-static-manifest.json (repeatable)")
-    parser.add_argument("--evidence", type=Path, help="optional exact logical-path variant evidence JSON")
-    parser.add_argument("--output", required=True, type=Path, help="new, non-existing output run directory")
+    parser.add_argument(
+        "--catalog",
+        action="append",
+        required=True,
+        type=Path,
+        help="textured-static-manifest.json (repeatable)",
+    )
+    parser.add_argument(
+        "--evidence", type=Path, help="optional exact logical-path variant evidence JSON"
+    )
+    parser.add_argument(
+        "--output", required=True, type=Path, help="new, non-existing output run directory"
+    )
     args = parser.parse_args(argv)
     try:
         manifest = build_manifest(args.characters, args.catalog, args.output, args.evidence)

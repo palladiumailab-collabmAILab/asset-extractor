@@ -32,7 +32,10 @@ class RenderGltfSnapshotTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.snapshot_caption({}, Path("model.gltf"), "   ")
 
-    @unittest.skipUnless(importlib.util.find_spec("trimesh") and importlib.util.find_spec("pyrender"), "vision dependencies are optional")
+    @unittest.skipUnless(
+        importlib.util.find_spec("trimesh") and importlib.util.find_spec("pyrender"),
+        "vision dependencies are optional",
+    )
     def test_established_renderer_can_render_a_small_scene(self) -> None:
         import trimesh
 

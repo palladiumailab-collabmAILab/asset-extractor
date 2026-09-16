@@ -46,13 +46,34 @@ class AssetMatcherTests(unittest.TestCase):
     def test_same_named_model_and_illustration_are_paired(self) -> None:
         dictionary = self.write_dictionary()
         assets = self.root / "assets.json"
-        assets.write_text(json.dumps({"assets": [
-            {"asset_id": "mesh-1", "logical_path": "model/s2_hairen/s2_hairen.mesh", "asset_type": "mesh"},
-            {"asset_id": "image-1", "logical_path": "illustration/hairen/hairen.png", "asset_type": "illustration"},
-            {"asset_id": "unknown", "logical_path": "audio/other.ogg", "asset_type": "audio"},
-        ]}), encoding="utf-8")
+        assets.write_text(
+            json.dumps(
+                {
+                    "assets": [
+                        {
+                            "asset_id": "mesh-1",
+                            "logical_path": "model/s2_hairen/s2_hairen.mesh",
+                            "asset_type": "mesh",
+                        },
+                        {
+                            "asset_id": "image-1",
+                            "logical_path": "illustration/hairen/hairen.png",
+                            "asset_type": "illustration",
+                        },
+                        {
+                            "asset_id": "unknown",
+                            "logical_path": "audio/other.ogg",
+                            "asset_type": "audio",
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         manifest = build_match_manifest(dictionary, assets)
-        self.assertEqual(manifest["summary"], {"assets": 3, "matched": 2, "unmatched": 1, "paired_3d_image": 2})
+        self.assertEqual(
+            manifest["summary"], {"assets": 3, "matched": 2, "unmatched": 1, "paired_3d_image": 2}
+        )
         mesh, image, unknown = manifest["matches"]
         self.assertEqual(mesh["match_method"], "normalized")
         self.assertEqual(mesh["entity"]["name_ja"], "海忍")
@@ -74,26 +95,54 @@ class AssetMatcherTests(unittest.TestCase):
     def test_alias_and_missing_logical_path_are_explicit(self) -> None:
         dictionary = self.write_dictionary()
         assets = self.root / "assets.json"
-        assets.write_text(json.dumps({"entries": [
-            {"logical_path": "portrait/kainin.png", "asset_type": "sprite"},
-            {"logical_path": None, "path": None, "asset_type": "texture"},
-        ]}), encoding="utf-8")
+        assets.write_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {"logical_path": "portrait/kainin.png", "asset_type": "sprite"},
+                        {"logical_path": None, "path": None, "asset_type": "texture"},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         manifest = build_match_manifest(dictionary, assets)
         self.assertEqual(manifest["matches"][0]["match_method"], "alias")
         self.assertEqual(manifest["matches"][1]["evidence"], "logical_path_missing")
 
     def test_dictionary_is_game_replaceable_json(self) -> None:
         dictionary = self.root / "entities.json"
-        dictionary.write_text(json.dumps({"entities": [{
-            "entity_id": "hero1", "entity_type": "character", "asset_token": "hero-one",
-            "name_ja": "勇者", "aliases": ["h1"], "game_specific": "kept",
-        }]}), encoding="utf-8")
+        dictionary.write_text(
+            json.dumps(
+                {
+                    "entities": [
+                        {
+                            "entity_id": "hero1",
+                            "entity_type": "character",
+                            "asset_token": "hero-one",
+                            "name_ja": "勇者",
+                            "aliases": ["h1"],
+                            "game_specific": "kept",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         rows = load_dictionary(dictionary)
         self.assertEqual(rows[0]["metadata"], {"game_specific": "kept"})
 
     def test_ambiguous_dictionary_alias_is_rejected(self) -> None:
         dictionary = self.root / "bad.json"
-        dictionary.write_text(json.dumps([{"entity_id": "a", "asset_token": "same"}, {"entity_id": "b", "asset_token": "same"}]), encoding="utf-8")
+        dictionary.write_text(
+            json.dumps(
+                [
+                    {"entity_id": "a", "asset_token": "same"},
+                    {"entity_id": "b", "asset_token": "same"},
+                ]
+            ),
+            encoding="utf-8",
+        )
         with self.assertRaises(ExtractionError):
             load_dictionary(dictionary)
 
@@ -102,9 +151,35 @@ class AssetMatcherTests(unittest.TestCase):
         assets = self.root / "assets.json"
         assets.write_text('{"assets": []}\n', encoding="utf-8")
         output = self.root / "matched.json"
-        self.assertEqual(main(["match-assets", "--dictionary", str(dictionary), "--assets", str(assets), "--output", str(output)]), 0)
+        self.assertEqual(
+            main(
+                [
+                    "match-assets",
+                    "--dictionary",
+                    str(dictionary),
+                    "--assets",
+                    str(assets),
+                    "--output",
+                    str(output),
+                ]
+            ),
+            0,
+        )
         self.assertTrue(output.is_file())
-        self.assertEqual(main(["match-assets", "--dictionary", str(dictionary), "--assets", str(assets), "--output", str(output)]), 2)
+        self.assertEqual(
+            main(
+                [
+                    "match-assets",
+                    "--dictionary",
+                    str(dictionary),
+                    "--assets",
+                    str(assets),
+                    "--output",
+                    str(output),
+                ]
+            ),
+            2,
+        )
 
 
 if __name__ == "__main__":
