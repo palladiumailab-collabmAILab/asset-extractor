@@ -24,13 +24,6 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path: str, old: str, new: str) -> None:
-              file = Path(path)
-              text = file.read_text(encoding="utf-8")
-              if text.count(old) != 1:
-                  raise SystemExit(f"expected one match in {path}, found {text.count(old)}")
-              file.write_text(text.replace(old, new, 1), encoding="utf-8")
-
           orchestrator = Path("programs/src/asset_extractor/orchestrator.py")
           text = orchestrator.read_text(encoding="utf-8")
           old_import = "from typing import Any, Iterable\n"
@@ -44,7 +37,7 @@ jobs:
               if manifest is not None:
                   result["manifest"] = str(manifest.resolve())
               return result
-          '''.replace("          ", "")
+          '''
           new_result = '''StageStatus = Literal["complete", "partial", "failed", "skipped", "blocked"]
           _STAGE_STATUS_VALUES = {"complete", "partial", "failed", "skipped", "blocked"}
           _PIPELINE_STAGE_ORDER = (
@@ -105,21 +98,22 @@ jobs:
               if any(status == "partial" for status in statuses):
                   return "partial"
               return "complete"
-          '''.replace("          ", "")
+          '''
           if text.count(old_result) != 1:
-              raise SystemExit("unexpected _result implementation")
+              raise SystemExit(f"unexpected _result implementation: {text.count(old_result)} matches")
           text = text.replace(old_result, new_result, 1)
-          text = text.replace(
-              'return _result(str(document.get("status", "failed")), manifest, returncode=completed.returncode)',
-              'return _result(_stage_status(document.get("status")), manifest, returncode=completed.returncode)',
-              1,
-          )
+
+          old_textured_status = 'return _result(str(document.get("status", "failed")), manifest, returncode=completed.returncode)'
+          new_textured_status = 'return _result(_stage_status(document.get("status")), manifest, returncode=completed.returncode)'
+          if text.count(old_textured_status) != 1:
+              raise SystemExit("unexpected textured status normalization")
+          text = text.replace(old_textured_status, new_textured_status, 1)
 
           marker = "\ndef run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:\n"
           if text.count(marker) != 1:
               raise SystemExit("unexpected run_pipeline marker")
           prefix = text.split(marker, 1)[0]
-          new_run = r'''
+          new_run = '''
           def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
               config_path = config_path.resolve()
               output = output.resolve()
@@ -264,66 +258,71 @@ jobs:
               }
               atomic_write_json(output / "pipeline-manifest.json", manifest)
               return manifest
-          '''.replace("          ", "")
-          orchestrator.write_text(prefix + "\n" + new_run.lstrip("\n"), encoding="utf-8")
+          '''
+          # The YAML block indentation is removed before Python sees this file; remove
+          # only the indentation intentionally used to make the multiline string readable.
+          new_run = "\n".join(line[10:] if line.startswith("          ") else line for line in new_run.splitlines())
+          orchestrator.write_text(prefix + "\n" + new_run.lstrip("\n") + "\n", encoding="utf-8")
 
           backends = Path("programs/src/asset_extractor/backends.py")
           text = backends.read_text(encoding="utf-8")
           old = '''        completed = subprocess.run(
-                      self._command(request),
-                      check=False,
-                      capture_output=True,
-                      text=True,
-                      encoding="utf-8",
-                      errors="replace",
-                      timeout=self.timeout_seconds,
-                  )
-          '''.replace("          ", "")
+              self._command(request),
+              check=False,
+              capture_output=True,
+              text=True,
+              encoding="utf-8",
+              errors="replace",
+              timeout=self.timeout_seconds,
+          )
+          '''
           new = '''        command = self._command(request)
-                  try:
-                      completed = subprocess.run(
-                          command,
-                          check=False,
-                          capture_output=True,
-                          text=True,
-                          encoding="utf-8",
-                          errors="replace",
-                          timeout=self.timeout_seconds,
-                      )
-                  except subprocess.TimeoutExpired as exc:
-                      def bounded(value: str | bytes | None) -> str:
-                          if value is None:
-                              return ""
-                          if isinstance(value, bytes):
-                              value = value.decode("utf-8", errors="replace")
-                          return value.strip()[:500]
+          try:
+              completed = subprocess.run(
+                  command,
+                  check=False,
+                  capture_output=True,
+                  text=True,
+                  encoding="utf-8",
+                  errors="replace",
+                  timeout=self.timeout_seconds,
+              )
+          except subprocess.TimeoutExpired as exc:
+              def bounded(value: str | bytes | None) -> str:
+                  if value is None:
+                      return ""
+                  if isinstance(value, bytes):
+                      value = value.decode("utf-8", errors="replace")
+                  return value.strip()[:500]
 
-                      source = str(request.source_paths[0].resolve())
-                      raise ExtractionError(
-                          "dedicated backend timed out: "
-                          f"backend={request.backend} source={source} "
-                          f"timeout_seconds={self.timeout_seconds} "
-                          f"stdout={bounded(exc.stdout)!r} stderr={bounded(exc.stderr)!r}"
-                      ) from exc
-          '''.replace("          ", "")
+              source = str(request.source_paths[0].resolve())
+              raise ExtractionError(
+                  "dedicated backend timed out: "
+                  f"backend={request.backend} source={source} "
+                  f"timeout_seconds={self.timeout_seconds} "
+                  f"stdout={bounded(exc.stdout)!r} stderr={bounded(exc.stderr)!r}"
+              ) from exc
+          '''
           if text.count(old) != 1:
-              raise SystemExit("unexpected DedicatedBackend subprocess block")
+              raise SystemExit(f"unexpected DedicatedBackend subprocess block: {text.count(old)} matches")
           backends.write_text(text.replace(old, new, 1), encoding="utf-8")
 
           tests = Path("development/tests/test_orchestrator.py")
           text = tests.read_text(encoding="utf-8")
+          import_anchor = 'from asset_extractor.classification import classify_manifest_entries  # noqa: E402\n'
+          if text.count(import_anchor) != 1:
+              raise SystemExit("unexpected orchestrator test import anchor")
           text = text.replace(
-              'from asset_extractor.classification import classify_manifest_entries  # noqa: E402\n',
-              'from asset_extractor.classification import classify_manifest_entries  # noqa: E402\nfrom asset_extractor.errors import ExtractionError  # noqa: E402\n',
+              import_anchor,
+              import_anchor + 'from asset_extractor.errors import ExtractionError  # noqa: E402\n',
               1,
           )
           old_assert = '            self.assertEqual(manifest["status"], "partial")\n'
           if text.count(old_assert) != 1:
-              raise SystemExit("unexpected pipeline status assertion")
+              raise SystemExit(f"unexpected pipeline status assertion: {text.count(old_assert)} matches")
           text = text.replace(old_assert, '            self.assertEqual(manifest["status"], "complete")\n', 1)
-          anchor = '''    def test_pipeline_does_not_overwrite_a_previous_run(self) -> None:
-          '''.replace("          ", "")
-          addition = r'''    def test_minimal_pipeline_skips_optional_stages_without_degrading_status(self) -> None:
+          anchor = '    def test_pipeline_does_not_overwrite_a_previous_run(self) -> None:\n'
+          addition = '''    def test_minimal_pipeline_skips_optional_stages_without_degrading_status(self) -> None:
               with tempfile.TemporaryDirectory() as temporary:
                   root = Path(temporary)
                   source = root / "source.zip"
@@ -342,11 +341,15 @@ jobs:
               for name in ("acquisition", "extraction", "classification"):
                   self.assertTrue(manifest["stages"][name]["required"])
 
-              def test_placeholder(self):
+              def unused(self):
                   pass
 
-          '''.replace("              def test_placeholder(self):\n                  pass\n\n", "").replace("          ", "")
-          addition += r'''    def test_extraction_failure_blocks_configured_downstream_stages(self) -> None:
+              def unused_two(self):
+                  pass
+
+          '''
+          addition = addition.replace('        def unused(self):\n            pass\n\n        def unused_two(self):\n            pass\n\n', '')
+          addition += '''    def test_extraction_failure_blocks_configured_downstream_stages(self) -> None:
               with tempfile.TemporaryDirectory() as temporary:
                   root = Path(temporary)
                   source = root / "source.npk"
@@ -370,7 +373,9 @@ jobs:
                   ):
                       manifest = run_pipeline(config, output)
 
-                  persisted = json.loads((output / "pipeline-manifest.json").read_text(encoding="utf-8"))
+                  persisted = json.loads(
+                      (output / "pipeline-manifest.json").read_text(encoding="utf-8")
+                  )
 
               self.assertEqual(manifest["status"], "failed")
               self.assertEqual(persisted["status"], "failed")
@@ -379,26 +384,27 @@ jobs:
                   self.assertEqual(manifest["stages"][name]["status"], "blocked")
                   self.assertTrue(manifest["stages"][name]["required"])
 
-          '''.replace("          ", "")
+          '''
           if text.count(anchor) != 1:
               raise SystemExit("unexpected orchestrator test insertion point")
           tests.write_text(text.replace(anchor, addition + anchor, 1), encoding="utf-8")
 
           backend_tests = Path("development/tests/test_backends.py")
           text = backend_tests.read_text(encoding="utf-8")
+          old_import = "from subprocess import CompletedProcess\n"
+          if text.count(old_import) != 1:
+              raise SystemExit("unexpected subprocess import")
+          text = text.replace(old_import, "from subprocess import CompletedProcess, TimeoutExpired\n", 1)
+          import_anchor = "from asset_extractor.cli import build_parser  # noqa: E402\n"
+          if text.count(import_anchor) != 1:
+              raise SystemExit("unexpected backend test import anchor")
           text = text.replace(
-              "from subprocess import CompletedProcess\n",
-              "from subprocess import CompletedProcess, TimeoutExpired\n",
+              import_anchor,
+              import_anchor + "from asset_extractor.errors import ExtractionError  # noqa: E402\n",
               1,
           )
-          text = text.replace(
-              "from asset_extractor.cli import build_parser  # noqa: E402\n",
-              "from asset_extractor.cli import build_parser  # noqa: E402\nfrom asset_extractor.errors import ExtractionError  # noqa: E402\n",
-              1,
-          )
-          anchor = '''    def test_extract_cli_exposes_backend_selection(self) -> None:
-          '''.replace("          ", "")
-          addition = r'''    def test_dedicated_adapter_converts_timeout_to_domain_error(self) -> None:
+          anchor = '    def test_extract_cli_exposes_backend_selection(self) -> None:\n'
+          addition = '''    def test_dedicated_adapter_converts_timeout_to_domain_error(self) -> None:
               with tempfile.TemporaryDirectory() as temporary:
                   root = Path(temporary)
                   source = root / "sample.npk"
@@ -424,7 +430,7 @@ jobs:
               self.assertIn("partial stdout", message)
               self.assertIn("partial stderr", message)
 
-          '''.replace("          ", "")
+          '''
           if text.count(anchor) != 1:
               raise SystemExit("unexpected backend test insertion point")
           backend_tests.write_text(text.replace(anchor, addition + anchor, 1), encoding="utf-8")
@@ -445,7 +451,8 @@ jobs:
           PY
       - name: Format and review patch
         run: |
-          python -m ruff format programs/src/asset_extractor/orchestrator.py programs/src/asset_extractor/backends.py development/tests/test_orchestrator.py development/tests/test_backends.py
+          python -m pip install --disable-pip-version-check -q ruff==0.8.4
+          ruff format programs/src/asset_extractor/orchestrator.py programs/src/asset_extractor/backends.py development/tests/test_orchestrator.py development/tests/test_backends.py
           git diff --check
           git diff --stat
       - name: Commit patch and remove migration workflow
