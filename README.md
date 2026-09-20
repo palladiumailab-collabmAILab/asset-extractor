@@ -32,11 +32,11 @@ python programs/asset_extractor.py extract input/raw/sample.zip --output output/
 python programs/asset_extractor.py validate-manifest output/runs/sample/run-manifest.json
 python programs/asset_extractor.py match-assets --dictionary game.csv --assets assets.json --output matches.json
 python programs/run_minimal_restore_test.py `
-  --source C:\Onmyoji-Canonical-Source\obb\patch.251120.com.netease.onmyoji.na.obb `
-  --output C:\Onmyoji-Extraction-Workspace\runs\minimal-restore-test-20260915
+  --source C:\Users\palla\Documents\ChatGPT\Onmyoji-Canonical-Source\obb\patch.251120.com.netease.onmyoji.na.obb `
+  --output C:\Users\palla\Documents\ChatGPT\Onmyoji-Extraction-Workspace\runs\minimal-restore-test-20260915
 python programs/asset_extractor.py pipeline `
   --config development/config/pipeline.example.json `
-  --output C:\Onmyoji-Extraction-Workspace\runs\pipeline-20260915
+  --output C:\Users\palla\Documents\ChatGPT\Onmyoji-Extraction-Workspace\runs\pipeline-20260915
 python -m unittest discover -s development/tests -t .
 ```
 

@@ -60,8 +60,8 @@ Every run directory must be new. A successful run writes
 
 ```powershell
 python programs/run_minimal_restore_test.py `
-  --source "C:\Onmyoji-Canonical-Source\obb\patch.251120.com.netease.onmyoji.na.obb" `
-  --output "C:\Onmyoji-Extraction-Workspace\runs\minimal-restore-test-20260915"
+  --source "C:\Users\palla\Documents\ChatGPT\Onmyoji-Canonical-Source\obb\patch.251120.com.netease.onmyoji.na.obb" `
+  --output "C:\Users\palla\Documents\ChatGPT\Onmyoji-Extraction-Workspace\runs\minimal-restore-test-20260915"
 ```
 
 Use `--video-member` or `--image-member` to pin an exact archive member.
