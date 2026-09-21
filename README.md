@@ -115,6 +115,10 @@ NeoXのKTX/ASTC等をPNGへ変換する実行環境が通常のPythonと異な�
 抽出、共通形式判定、同名3D/画像ペアの作成、NeoXテクスチャ公開、レンダー、
 参照画像の候補スコアリングを順番に実行します。各段階は同じrunディレクトリへ
 manifestを残し、未設定・未解決・曖昧な結果は`partial`または`failed`になります。
+実装上は`orchestrator.py`が順序・依存関係・全体status・最終manifestだけを担当し、
+具体的なtextured/render/visual処理は`pipeline_stages.py`へ分離しています。
+外部Python実行は`pipeline_runner.py`の狭いrunner境界を通るため、実プロセスを起動しない
+テスト用runnerを注入できます。
 
 BlueStacksを使う場合は`source`の代わりに`acquisition`を設定します。これは
 PythonからADB実行ファイルを呼び出すため、ADB接続・読み取り可能なパス・

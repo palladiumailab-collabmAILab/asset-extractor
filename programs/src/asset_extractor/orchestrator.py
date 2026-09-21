@@ -4,38 +4,36 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
-from typing import Any, Iterable, Literal, Required, TypedDict, cast
+from typing import Any, Iterable, Literal
 
 from .backends import BackendRequest, extract_with_backend
 from .classification import classify_manifest_entries
 from .common import atomic_write_json, sha256_file, tool_metadata, utc_now
-from .errors import ExtractionError
+from .errors import ExtractionError, PipelineError
 from .matcher import build_match_manifest
+from .pipeline_contracts import (
+    StageResult,
+    result as _result,
+    stage_status as _stage_status,
+    stage_usable as _stage_usable,
+)
+from .pipeline_runner import run_python
+from .pipeline_stages import (
+    run_render_stage,
+    run_textured_stage,
+    run_visual_stage,
+)
+from .pipeline_support import load_json_object as _load_json_object
+from .pipeline_support import path as _path
 from .schema import SchemaContractError, validate_document
 from .visual import compare_images
 
 
-class PipelineError(ExtractionError):
-    """A configuration or stage error in the unified pipeline."""
+def _run_python(script: Path, arguments: list[str]) -> subprocess.CompletedProcess[str]:
+    """Compatibility wrapper and injection point for pipeline subprocesses."""
 
-
-def _path(value: Any, base: Path, field: str) -> Path:
-    if not isinstance(value, str) or not value.strip():
-        raise PipelineError(f"{field} must be a non-empty path")
-    candidate = Path(value).expanduser()
-    return (base / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
-
-
-def _load_json_object(path: Path, label: str) -> dict[str, Any]:
-    try:
-        document = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise PipelineError(f"cannot read {label} {path}: {exc}") from exc
-    if not isinstance(document, dict):
-        raise PipelineError(f"{label} must be a JSON object")
-    return document
+    return run_python(script, arguments)
 
 
 def _load_config(path: Path) -> dict[str, Any]:
@@ -71,24 +69,6 @@ def _load_config(path: Path) -> dict[str, Any]:
     return document
 
 
-def _run_python(script: Path, arguments: list[str]) -> subprocess.CompletedProcess[str]:
-    command = [str(Path(sys.executable).resolve()), str(script.resolve()), *arguments]
-    try:
-        return subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=15 * 60,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise PipelineError(f"pipeline subprocess timed out after 900 seconds: {script}") from exc
-
-
-StageStatus = Literal["complete", "partial", "failed", "skipped", "blocked"]
-_STAGE_STATUS_VALUES = {"complete", "partial", "failed", "skipped", "blocked"}
 _PIPELINE_STAGE_ORDER = (
     "acquisition",
     "extraction",
@@ -100,27 +80,6 @@ _PIPELINE_STAGE_ORDER = (
 )
 
 
-class StageResult(TypedDict, total=False):
-    status: Required[StageStatus]
-    required: bool
-    manifest: str
-    reason: str
-    message: str
-
-
-def _stage_status(value: Any) -> StageStatus:
-    if isinstance(value, str) and value in _STAGE_STATUS_VALUES:
-        return cast(StageStatus, value)
-    return "failed"
-
-
-def _result(status: StageStatus, manifest: Path | None = None, **fields: Any) -> StageResult:
-    result: dict[str, Any] = {"status": status, **fields}
-    if manifest is not None:
-        result["manifest"] = str(manifest.resolve())
-    return cast(StageResult, result)
-
-
 def _required_stages(config: dict[str, Any]) -> set[str]:
     required = {"acquisition", "extraction", "classification"}
     if config.get("dictionary") is not None:
@@ -130,10 +89,6 @@ def _required_stages(config: dict[str, Any]) -> set[str]:
     if config.get("references") is not None:
         required.add("visual")
     return required
-
-
-def _stage_usable(stage: StageResult) -> bool:
-    return stage.get("status") in {"complete", "partial"}
 
 
 def _pipeline_status(
@@ -444,153 +399,21 @@ def _extract_sources(
 
 
 def _run_textured_stage(run_root: Path, config_dir: Path, config: dict[str, Any]) -> StageResult:
-    source_tree = _path(config.get("source_tree"), config_dir, "textured.source_tree")
-    script = Path(__file__).resolve().parents[2] / "prepare_textured_pilot.py"
-    output = run_root / "textured"
-    arguments = [
-        "--run-root",
-        str(run_root),
-        "--output",
-        str(output),
-        "--source-tree",
-        str(source_tree),
-    ]
-    for catalog in config.get("catalog_runs", []):
-        arguments.extend(
-            ("--catalog-run", str(_path(catalog, config_dir, "textured.catalog_runs[]")))
-        )
-    if config.get("allow_equivalent_material_duplicates", False):
-        arguments.append("--allow-equivalent-material-duplicates")
-    for mesh_sha in config.get("only_mesh_sha256", []):
-        arguments.extend(("--only-mesh-sha256", str(mesh_sha)))
-    if config.get("material_overrides"):
-        arguments.extend(
-            (
-                "--material-overrides",
-                str(_path(config["material_overrides"], config_dir, "textured.material_overrides")),
-            )
-        )
-    if config.get("runtime_python"):
-        arguments.extend(
-            (
-                "--runtime-python",
-                str(_path(config["runtime_python"], config_dir, "textured.runtime_python")),
-            )
-        )
-    completed = _run_python(script, arguments)
-    manifest = output / "textured-static-manifest.json"
-    if not manifest.is_file():
-        return _result(
-            "failed",
-            returncode=completed.returncode,
-            error=completed.stderr.strip() or completed.stdout.strip(),
-        )
-    document = json.loads(manifest.read_text(encoding="utf-8"))
-    return _result(_stage_status(document.get("status")), manifest, returncode=completed.returncode)
+    """Keep the historical private entry point while injecting the runner."""
+
+    return run_textured_stage(run_root, config_dir, config, runner=_run_python)
 
 
 def _run_render_stage(run_root: Path, textured: StageResult) -> tuple[StageResult, list[Path]]:
-    if textured.get("status") not in {"complete", "partial"} or not textured.get("manifest"):
-        return _result("skipped", reason="textured stage did not publish a manifest"), []
-    document = json.loads(Path(str(textured["manifest"])).read_text(encoding="utf-8"))
-    script = Path(__file__).resolve().parents[2] / "render_gltf_snapshot.py"
-    render_root = run_root / "renders"
-    rendered: list[Path] = []
-    failures: list[str] = []
-    for index, model in enumerate(document.get("models", [])):
-        if not isinstance(model, dict) or model.get("status") != "converted":
-            continue
-        source = Path(str(model.get("output", ""))).resolve()
-        try:
-            source.relative_to(run_root.resolve())
-        except ValueError:
-            failures.append(f"model escaped pipeline run root: {source}")
-            continue
-        if not source.is_file():
-            failures.append(f"missing model: {source}")
-            continue
-        target = render_root / f"{index:04d}-{source.stem}.png"
-        completed = _run_python(script, [str(source), str(target)])
-        if completed.returncode == 0 and target.is_file():
-            rendered.append(target)
-        else:
-            failures.append(completed.stderr.strip() or f"renderer failed: {source}")
-    status: StageStatus = (
-        "complete" if rendered and not failures else "partial" if rendered else "failed"
-    )
-    return _result(
-        status, output=str(render_root.resolve()), rendered=len(rendered), failures=failures
-    ), rendered
+    """Keep the historical private entry point while injecting the runner."""
+
+    return run_render_stage(run_root, textured, runner=_run_python)
 
 
 def _run_visual_stage(config: Any, config_dir: Path, rendered: Iterable[Path]) -> StageResult:
-    if config is None:
-        return _result("skipped", reason="no reference images configured")
-    if not isinstance(config, list) or not config:
-        return _result("failed", reason="references must be a non-empty array")
-    candidates = list(rendered)
-    results: list[dict[str, Any]] = []
-    for index, raw in enumerate(config):
-        if isinstance(raw, str):
-            reference = _path(raw, config_dir, f"references[{index}]")
-            selected_candidates = candidates
-        elif isinstance(raw, dict):
-            reference = _path(raw.get("path"), config_dir, f"references[{index}].path")
-            configured = raw.get("candidates")
-            selected_candidates = (
-                [
-                    _path(item, config_dir, f"references[{index}].candidates[]")
-                    for item in configured
-                ]
-                if isinstance(configured, list)
-                else candidates
-            )
-        else:
-            raise PipelineError(f"references[{index}] must be a path or object")
-        if not reference.is_file():
-            raise PipelineError(f"reference image is missing: {reference}")
-        comparisons = [
-            compare_images(reference, candidate)
-            for candidate in selected_candidates
-            if candidate.is_file()
-        ]
-        scored = [item for item in comparisons if item.get("status") == "scored"]
-        ranked = sorted(scored, key=lambda item: float(item.get("score", 0.0)), reverse=True)
-        best = ranked[0] if ranked else None
-        second = ranked[1] if len(ranked) > 1 else None
-        margin = (
-            round(float(best["score"]) - float(second["score"]), 6)
-            if best is not None and second is not None
-            else None
-        )
-        accepted_ranked = [item for item in ranked if item.get("accepted") is True]
-        decision = (
-            accepted_ranked[0]
-            if accepted_ranked
-            and best is accepted_ranked[0]
-            and (second is None or (margin is not None and margin >= 0.05))
-            else None
-        )
-        results.append(
-            {
-                "reference": str(reference.resolve()),
-                "comparisons": comparisons,
-                "best": best,
-                "accepted": decision,
-                "margin": margin,
-            }
-        )
-    status: StageStatus = (
-        "complete"
-        if results and all(item["accepted"] is not None for item in results)
-        else "partial"
-    )
-    return _result(
-        status,
-        count=len(results),
-        results=results,
-        policy="ranking evidence; never rewrites UV/material bindings",
-    )
+    """Keep the historical private entry point while injecting the comparator."""
+
+    return run_visual_stage(config, config_dir, rendered, comparator=compare_images)
 
 
 def run_pipeline(config_path: Path, output: Path) -> dict[str, Any]:
