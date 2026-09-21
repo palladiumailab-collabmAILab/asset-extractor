@@ -22,6 +22,7 @@ from asset_extractor.orchestrator import (  # noqa: E402
     run_pipeline,
 )
 from asset_extractor.orchestrator import _source_paths  # noqa: E402
+from asset_extractor.pipeline_stages import run_textured_stage  # noqa: E402
 from asset_extractor.schema import validate_document  # noqa: E402
 from asset_extractor.common import sha256_file  # noqa: E402
 
@@ -175,6 +176,34 @@ class OrchestratorTests(unittest.TestCase):
         ):
             with self.assertRaises(PipelineError):
                 _run_python(Path("stage.py"), [])
+
+    def test_optional_stage_accepts_an_injected_subprocess_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_root = root / "run"
+            source_tree = root / "source-tree"
+            source_tree.mkdir()
+            calls: list[tuple[Path, list[str]]] = []
+
+            def fake_runner(script: Path, arguments: list[str]) -> subprocess.CompletedProcess[str]:
+                calls.append((script, arguments))
+                output = run_root / "textured"
+                output.mkdir(parents=True)
+                (output / "textured-static-manifest.json").write_text(
+                    json.dumps({"status": "complete"}), encoding="utf-8"
+                )
+                return subprocess.CompletedProcess([str(script)], 0, "", "")
+
+            result = run_textured_stage(
+                run_root,
+                root,
+                {"source_tree": "source-tree"},
+                runner=fake_runner,
+            )
+
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1][-2:], ["--source-tree", str(source_tree.resolve())])
 
     def test_visual_stage_keeps_low_confidence_scores_partial(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
