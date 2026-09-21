@@ -32,11 +32,11 @@ python programs/asset_extractor.py extract input/raw/sample.zip --output output/
 python programs/asset_extractor.py validate-manifest output/runs/sample/run-manifest.json
 python programs/asset_extractor.py match-assets --dictionary game.csv --assets assets.json --output matches.json
 python programs/run_minimal_restore_test.py `
-  --source C:\Users\palla\Documents\ChatGPT\Onmyoji-Canonical-Source\obb\patch.251120.com.netease.onmyoji.na.obb `
-  --output C:\Users\palla\Documents\ChatGPT\Onmyoji-Extraction-Workspace\runs\minimal-restore-test-20260915
+  --source '<SOURCE_ROOT>\obb\patch.251120.com.netease.onmyoji.na.obb' `
+  --output '<WORKSPACE>\runs\minimal-restore-test-20260915'
 python programs/asset_extractor.py pipeline `
   --config development/config/pipeline.example.json `
-  --output C:\Users\palla\Documents\ChatGPT\Onmyoji-Extraction-Workspace\runs\pipeline-20260915
+  --output '<WORKSPACE>\runs\pipeline-20260915'
 python -m unittest discover -s development/tests -t .
 ```
 
@@ -115,6 +115,10 @@ NeoXのKTX/ASTC等をPNGへ変換する実行環境が通常のPythonと異な�
 抽出、共通形式判定、同名3D/画像ペアの作成、NeoXテクスチャ公開、レンダー、
 参照画像の候補スコアリングを順番に実行します。各段階は同じrunディレクトリへ
 manifestを残し、未設定・未解決・曖昧な結果は`partial`または`failed`になります。
+実装上は`orchestrator.py`が順序・依存関係・全体status・最終manifestだけを担当し、
+具体的なtextured/render/visual処理は`pipeline_stages.py`へ分離しています。
+外部Python実行は`pipeline_runner.py`の狭いrunner境界を通るため、実プロセスを起動しない
+テスト用runnerを注入できます。
 
 BlueStacksを使う場合は`source`の代わりに`acquisition`を設定します。これは
 PythonからADB実行ファイルを呼び出すため、ADB接続・読み取り可能なパス・
