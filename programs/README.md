@@ -22,9 +22,9 @@ must be explicit and can use `{package}` in the remote path.
 
 ```powershell
 python programs/pull_bluestacks_snapshot.py `
-  --adb "C:\Android\platform-tools\adb.exe" `
+  --adb "<ANDROID_SDK_ROOT>\platform-tools\adb.exe" `
   --serial 127.0.0.1:5555 `
-  --output "C:\Onmyoji-Snapshots\device-assets-20260914-230000" `
+  --output "<SNAPSHOT_ROOT>\device-assets-20260914-230000" `
   --include-installed-apks
 ```
 
@@ -32,7 +32,7 @@ Example with an additional authorized source root:
 
 ```powershell
 python programs/pull_bluestacks_snapshot.py `
-  --output "C:\Onmyoji-Snapshots\device-assets-new" `
+  --output "<SNAPSHOT_ROOT>\device-assets-new" `
   --remote-root "optionres=/sdcard/Android/data/{package}/files/netease/onmyoji/Documents/OptionRes" `
   --remote-root "documents=/sdcard/Android/data/{package}/files/netease/onmyoji/Documents"
 ```
@@ -60,8 +60,8 @@ Every run directory must be new. A successful run writes
 
 ```powershell
 python programs/run_minimal_restore_test.py `
-  --source "C:\Users\palla\Documents\ChatGPT\Onmyoji-Canonical-Source\obb\patch.251120.com.netease.onmyoji.na.obb" `
-  --output "C:\Users\palla\Documents\ChatGPT\Onmyoji-Extraction-Workspace\runs\minimal-restore-test-20260915"
+  --source "<SOURCE_ROOT>\obb\patch.251120.com.netease.onmyoji.na.obb" `
+  --output "<WORKSPACE>\runs\minimal-restore-test-20260915"
 ```
 
 Use `--video-member` or `--image-member` to pin an exact archive member.
@@ -82,8 +82,8 @@ entity are marked `paired-3d-image`; unmatched and ambiguous rows are retained.
 ```powershell
 python programs/asset_extractor.py match-assets `
   --dictionary development/config/examples/onmyoji-characters.example.csv `
-  --assets C:\path\to\backend-run-manifest.json `
-  --output C:\path\to\asset-name-matches.json
+  --assets "<WORKSPACE>\backend-run-manifest.json" `
+  --output "<WORKSPACE>\asset-name-matches.json"
 ```
 
 The matcher contains no Onmyoji names. Dictionaries carry game-specific names,
@@ -98,13 +98,13 @@ when the input is NXPK/EXPK, a non-generic game profile is supplied, and an
 available checkout is found; otherwise it records a builtin fallback reason.
 
 ```powershell
-python programs/run_netease_backend.py C:\source\model2_1.npk `
-  --output C:\runs\model2_1-backend `
+python programs/run_netease_backend.py "<SOURCE_ROOT>\model2_1.npk" `
+  --output "<WORKSPACE>\runs\model2_1-backend" `
   --backend auto `
   --game-profile onmyoji `
-  --neoxtractor-root C:\tools\NeoXtractor `
-  --neoxtractor-config C:\tools\NeoXtractor\configs\omy_omrc.json `
-  --backend-python C:\tools\neoxtractor-venv\Scripts\python.exe
+  --neoxtractor-root "<NEOXTRACTOR_ROOT>" `
+  --neoxtractor-config "<NEOXTRACTOR_ROOT>\configs\omy_omrc.json" `
+  --backend-python "<BACKEND_PYTHON>"
 ```
 
 The wrapper records checkout commit/tree/dirty state, configuration hash,

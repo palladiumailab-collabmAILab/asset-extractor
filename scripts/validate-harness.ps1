@@ -27,6 +27,7 @@ function Invoke-PythonValidation {
     }
     Invoke-Checked 'console script smoke' { asset-extractor --help | Out-Null }
     Invoke-Checked 'skill validation' { python scripts/validate-skills.py skills }
+    Invoke-Checked 'canonical documentation path validation' { python scripts/check-canonical-doc-paths.py }
     Invoke-Checked 'asset extractor tests' { coverage run --branch --source=asset_extractor -m unittest discover -s development/tests -t . }
     Invoke-Checked 'coverage threshold' { coverage report --fail-under=55 }
     Invoke-Checked 'coverage JSON' { coverage json -o coverage.json }
