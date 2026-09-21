@@ -1,67 +1,49 @@
-# Asset extraction automation
+# Codex Software Development Harness
 
-This repository follows the shared Codex development harness while keeping asset-extraction-specific safety and provenance rules local.
+システム・開発者指示、ユーザーの明示依頼、現在地に近い `AGENTS.override.md` / `AGENTS.md` を優先します。このファイルは常時読む最小ルータです。
 
-## Operating invariants
+## 正本
 
-- Confirm the requested outcome, change scope, and acceptance criteria before implementation. If an ambiguity can materially change the implementation or completion decision, ask the user instead of silently inventing the goal.
-- Treat `docs/specs/` as the canonical home for durable current requirements. Read the relevant specification before changing observable behavior, data contracts, or extraction semantics. If code and specification conflict, surface the conflict rather than silently choosing one.
-- Tests, lint, builds, inspections, and rendered artifacts are evidence for acceptance criteria; they are not completion by themselves. Do not weaken tests, fixtures, graders, thresholds, schemas, or acceptance criteria merely to obtain a pass.
-- Do not add unrequested features, dependencies, external integrations, or large refactors.
-- Preserve pre-existing user changes. Do not use destructive Git operations such as `git reset --hard`, `git clean`, or `git checkout --` to discard unrelated work.
-- Read only the nearest instructions, relevant code, specifications, tests, and configuration needed for the task. Avoid purposeless repository-wide scans and large log dumps.
-- Keep changes small and purpose-scoped. Respect existing layout, naming, dependencies, schemas, formatter, and package/tool choices unless the task explicitly requires changing them.
-- The canonical development and verification path must be reproducible with Docker. Host execution may be used as a faster path, but host-only success is not sufficient for repository-level completion.
-- Maintained Python uses Ruff for both lint and format checks: `ruff check` and `ruff format --check`. Keep orthogonal checks such as mypy, unit tests, schema validation, and domain-specific verification when applicable.
-- GitHub Actions is the canonical remote quality gate for this executable GitHub repository. Pull requests and pushes to the default branch must run the applicable lint/format, tests, type checks, container/build verification, repository invariants, and domain validators. Local and Docker checks are preflight evidence, not a substitute for the remote gate. Expected CI that is missing, unexpectedly skipped, pending, or failing blocks a remote-verification claim.
-- After changes, review the diff and run checks proportional to the change. If a required check cannot be run, report the reason.
-- Never output, commit, or transmit credentials, private keys, tokens, unnecessary personal data, or large proprietary asset corpora.
-- Do not deploy, delete data, change permissions, incur charges, force-push, or write to GitHub unless the user explicitly requested that external action.
+- 共通ハーネスの正本は `palladiumailab-collabmAILab/codex-dev-harness`。
+- 下流へコピーした共通ファイルは upstream-managed とし、プロジェクト固有規則は `AGENTS.project.md` 等へ分離する。
+- 共通規則の変更は正本で検証してから pinned revision で下流へ同期する。
 
-## Standard workflow
+## モデルプロファイル
 
-1. Define the outcome, constraints, acceptance criteria, and change boundary. Ask before implementation when material ambiguity remains.
-2. Read the relevant `docs/specs/`, code, tests, and configuration with evidence.
-3. Implement the smallest change that satisfies the task.
-4. Run proportionate local/Docker validation as preflight.
-5. For GitHub changes, verify the GitHub Actions result for the target commit or pull request.
-6. Map acceptance criteria to evidence and report only the change, verification result, and remaining risk.
+実行中のモデルに対応するものを **1つだけ** 読みます。
 
-## Project safety boundary
+- GPT-6 Astra: `profiles/astra/AGENTS.md`
+- GPT-5.6 Sol / Luna: `profiles/sol-luna/AGENTS.md`
+- その他: モデル固有プロファイルを推測で流用しない。
 
-The project is limited to authorized local APK/OBB/NPK compatibility analysis and asset restoration.
+## 共通不変条件
 
-- Do not bypass authentication, DRM, access controls, licensing restrictions, root protections, or application sandboxes.
-- Do not execute extracted payloads.
-- Treat `input/` as read-only source/provenance data. Never modify source artifacts in place.
-- Write every extraction to a new output directory. Do not silently overwrite or reuse an existing run.
-- Record source/tool/configuration identity and hashes needed to reproduce or audit a run.
-- Make unresolved work and partial success explicit. Required evaluation that is unresolved cannot be reported as `complete`.
-- Preserve the run status contract `complete` / `partial` / `failed` and the existing exit-code semantics where defined by the current specification.
+- 依頼された成果、明示制約、受け入れ条件を変更しない。
+- durable な仕様変更では、関連する正本仕様だけを先に確認する。
+- test / lint / build / 評価は証拠であり成果そのものではない。合格のためだけに条件や評価器を弱めない。
+- 最小の変更面に限定し、依頼外の機能・依存・大規模リファクタを追加しない。
+- 既存の未コミット変更を保持し、破壊的 reset / clean / force push を既定にしない。
+- 秘密情報を出力・コミット・外部送信しない。依頼のないデプロイ、課金、削除、権限変更、外部書込みを行わない。
+- 同じ情報を目的なく再読込せず、状態変化のない同一検証を反復しない。
 
-## Repository layout
+## 条件付き参照
 
-- `input/`: read-only source files and provenance manifests.
-- `output/`: generated runs, validation results, and legacy outputs.
-- `programs/`: maintained implementation and vendor references.
-- `development/`: plans, evidence, fixtures, schemas, tests, and work handoffs.
-- `docs/specs/`: canonical durable requirements and links to executable contracts.
+必要な項目だけ読みます。通常実装で `docs/project-baseline.md` 全体を先読みしません。
 
-## Model and skill routing
+- 仕様の正本・仕様変更: `docs/baselines/specifications.md`
+- Docker / 再現環境を変更・追加: `docs/baselines/docker.md`
+- GitHub Actions / remote quality gate を変更・確認: `docs/baselines/github-ci.md`
+- Python lint / format / Ruff を変更・追加: `docs/baselines/python-ruff.md`
+- task contract / evaluation / optimization semantics を変更: `docs/harness-architecture.md`
+- セッション間 handoff が必要: `templates/codex-progress.md`
+- モデル別タスク依頼を組み立てる: `templates/task-prompts/`
 
-- Default implementation, design, debugging, review, and integration: `gpt-5.6-sol / medium`.
-- Use `gpt-5.6-luna / max` only for bounded candidate extraction, mechanical transformation, limited exploration, or independent read-only checks. Escalate to Sol instead of repeating a failed bounded attempt.
-- Add another model or routing branch only when the user requests it or repo-local evaluation shows a measurable improvement in quota use, speed, or quality.
-- `repo-research`: unfamiliar repository areas, complex dependencies, or external specifications.
-- `github-operations`: GitHub create/update/push/pull/Issue/PR work explicitly requested by the user.
-- `reverse-engineering`: authorized format analysis and evidence-driven compatibility work.
-- `long-running-work`: multi-stage or multi-session work requiring compact handoff and explicit partial state.
-- `self-improvement`: only when explicitly optimizing an agent/workflow against measurable outcomes; do not use it for ordinary extractor feature work.
+## Skill 発火条件
 
-GitHub writes are never implied by ordinary local development instructions.
+- `repo-research`: 未知のrepoで複数モジュールを横断して入口・依存・実行経路を特定するとき。
+- `github-operations`: branch / commit / push / Issue / PR / CI / remote mutation を明示依頼されたとき。
+- `self-improvement`: baseline と評価基準を固定して agent / prompt / tool / workflow を反復比較するとき。
+- `long-running-work`: 通常の1実装パスで完了せず、複数の大きな段階またはセッション間handoffが必要なとき。
+- `reverse-engineering`: 許可された opaque / legacy / binary / protocol を互換性・移行・診断・防御目的で解析するとき。
 
-## Validation proportionality
-
-- For small reversible changes, do not add tests that merely mirror the implementation.
-- Prioritize regression evidence for bugs, public APIs, persistence, authentication/authorization, concurrency, billing, and security-sensitive behavior.
-- Re-running the same validation without a material code/artifact/evidence change is not progress. Change strategy, surface the blocker, or gather new evidence instead.
+該当する `SKILL.md` だけ読み、全skillを事前読込しません。
