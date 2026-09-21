@@ -1,11 +1,11 @@
 ---
 name: self-improvement
-description: Evaluate and improve an agent workflow without blindly accumulating prompt patches. Use when iteratively optimizing prompts, tools, parsers, rules, or workflows against measurable outcomes.
+description: Optimize an existing agent, prompt, tool, parser, rule set, or workflow by generating bounded candidates and comparing them against a baseline with explicit evaluation criteria. Do not use for a one-off rewrite.
 ---
 
 # Self-improvement harness
 
-Use this skill only when the user asks to improve an existing agent/workflow through repeated evaluation or optimization. Do not use it for ordinary extractor feature development.
+Use this skill only when the user asks to improve an existing agent/workflow through repeated evaluation or optimization.
 
 ## Required inputs
 
@@ -49,4 +49,4 @@ Stop when the improvement threshold is not met, the evaluation budget is exhaust
 - optimizing one aggregate score while hiding a critical failure-class regression;
 - accepting/rejecting on a tiny one-run delta without accounting for evaluation noise.
 
-Project acceptance semantics are anchored in `docs/specs/` and mechanically enforced through versioned schemas, validators, fixtures/tests, and CI.
+Cross-cutting record semantics and acceptance rules are defined in `docs/harness-architecture.md`. Executable schemas/validators belong to the contract enforcement layer rather than this skill.
