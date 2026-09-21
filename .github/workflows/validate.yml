@@ -22,6 +22,9 @@ jobs:
           test -f skills/long-running-work/SKILL.md
           test -f skills/self-improvement/SKILL.md
 
+      - name: Validate canonical documentation paths
+        run: python3 scripts/check-canonical-doc-paths.py
+
       - name: Validate hook
         run: |
           test "$(git ls-files -s -- .githooks/pre-commit | awk '{print $1}')" = '100755'
