@@ -414,7 +414,7 @@ def split_primitives_and_attach_materials(
     document["textures"] = []
     document["samplers"] = [{"magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497}]
     document["materials"] = []
-    for ordinal, (slot, texture) in enumerate(zip(material_slots, texture_payloads)):
+    for ordinal, (slot, texture) in enumerate(zip(material_slots, texture_payloads, strict=True)):
         document["images"].append(
             {
                 "name": f"Tex0_{ordinal}_{slot.get('name') or 'material'}",
@@ -538,7 +538,7 @@ def validate_gltf(
                     raise PublicationError(f"accessor {index} contains non-finite values")
     position_count = int(document["accessors"][primitives[0]["attributes"]["POSITION"]]["count"])
     vertex_cursor = 0
-    for primitive, part in zip(primitives, parts):
+    for primitive, part in zip(primitives, parts, strict=True):
         indices = decoded_accessors[int(primitive["indices"])]
         if (
             not indices
@@ -881,7 +881,7 @@ def _mesh_success_fields(
                 "texture_output_sha256": texture["output_sha256"],
                 "technique": slot.get("technique"),
             }
-            for slot, texture in zip(slots, resolved_textures)
+            for slot, texture in zip(slots, resolved_textures, strict=True)
         ],
         "validation": converted["validation"],
         "static_only": True,

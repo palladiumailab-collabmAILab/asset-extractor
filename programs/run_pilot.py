@@ -165,7 +165,8 @@ def parse_index(source: Path) -> dict[str, Any]:
                     "bounds_checked": True,
                 }
             )
-        for left, right in zip(sorted(ranges), sorted(ranges)[1:]):
+        # Adjacent-pair comparison intentionally uses a one-item-shorter right side.
+        for left, right in zip(sorted(ranges), sorted(ranges)[1:], strict=False):
             if right[0] < left[1]:
                 raise RuntimeError(f"overlapping payload ranges at {left[2]} and {right[2]}")
         total_unpacked = sum(item["declared_unpacked_bytes"] for item in entries)
@@ -277,7 +278,7 @@ def run_neox(
                 f"NeoXtractor header/index mismatch: {archive.file_count}/{archive.info_size}"
             )
         with source.open("rb") as handle:
-            for base, upstream_index in zip(index["entries"], archive.indices):
+            for base, upstream_index in zip(index["entries"], archive.indices, strict=True):
                 target = destination / f"{base['ordinal']:07d}_{base['payload_id']:08x}.bin"
                 if not within(target, destination) or target.exists():
                     raise RuntimeError(f"unsafe or existing NeoXtractor destination: {target}")
@@ -479,7 +480,7 @@ def flatten_results(
     results: dict[str, dict[str, Any]], source: dict[str, Any], run_id: str, index: dict[str, Any]
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for tool_name, result in results.items():
+    for result in results.values():
         for item in result["entries"]:
             rows.append(
                 {

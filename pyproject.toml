@@ -26,7 +26,7 @@ line-length = 100
 exclude = ["programs/legacy", "programs/vendor"]
 
 [tool.ruff.lint]
-select = ["E", "F"]
+select = ["E", "F", "B"]
 ignore = ["E501"]
 
 [tool.mypy]
