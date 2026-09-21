@@ -165,7 +165,7 @@ def load_character_table(path: Path) -> list[dict[str, str]]:
                 else:
                     raw_by_canonical = {
                         canonical: raw.get(original, "")
-                        for original, canonical in zip(fields, mapped_fields)
+                        for original, canonical in zip(fields, mapped_fields, strict=True)
                     }
                     rarity = ensure_no_control(
                         normalized_text(raw_by_canonical.get("rarity", "")), "rarity", line

@@ -681,7 +681,7 @@ def _verify_sources_after(
     manifest: dict[str, Any],
 ) -> None:
     all_unchanged = True
-    for record, row in zip(sources, source_rows):
+    for record, row in zip(sources, source_rows, strict=True):
         if row["sha256_before"] is None:
             all_unchanged = False
             continue
@@ -762,7 +762,7 @@ def _preflight_sources(
 
     video_candidates: list[Candidate] = []
     image_candidates: list[Candidate] = []
-    for record, row in zip(records, source_rows):
+    for record, row in zip(records, source_rows, strict=True):
         if not record.path.exists():
             row["status"] = "missing"
             row["error"] = "source archive does not exist"
