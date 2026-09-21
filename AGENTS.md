@@ -1,67 +1,29 @@
-# Asset extraction automation
+# Codex Software Development Harness
 
-This repository follows the shared Codex development harness while keeping asset-extraction-specific safety and provenance rules local.
+Shared rules are managed from `palladiumailab-collabmAILab/codex-dev-harness`; the pinned revision is recorded in `docs/harness-upstream.md`. Keep project-specific rules in `AGENTS.project.md` or explicitly project-specific skills/docs, and read `AGENTS.project.md` when present.
 
-## Operating invariants
+## Common invariants
 
-- Confirm the requested outcome, change scope, and acceptance criteria before implementation. If an ambiguity can materially change the implementation or completion decision, ask the user instead of silently inventing the goal.
-- Treat `docs/specs/` as the canonical home for durable current requirements. Read the relevant specification before changing observable behavior, data contracts, or extraction semantics. If code and specification conflict, surface the conflict rather than silently choosing one.
-- Tests, lint, builds, inspections, and rendered artifacts are evidence for acceptance criteria; they are not completion by themselves. Do not weaken tests, fixtures, graders, thresholds, schemas, or acceptance criteria merely to obtain a pass.
-- Do not add unrequested features, dependencies, external integrations, or large refactors.
-- Preserve pre-existing user changes. Do not use destructive Git operations such as `git reset --hard`, `git clean`, or `git checkout --` to discard unrelated work.
-- Read only the nearest instructions, relevant code, specifications, tests, and configuration needed for the task. Avoid purposeless repository-wide scans and large log dumps.
-- Keep changes small and purpose-scoped. Respect existing layout, naming, dependencies, schemas, formatter, and package/tool choices unless the task explicitly requires changing them.
-- The canonical development and verification path must be reproducible with Docker. Host execution may be used as a faster path, but host-only success is not sufficient for repository-level completion.
-- Maintained Python uses Ruff for both lint and format checks: `ruff check` and `ruff format --check`. Keep orthogonal checks such as mypy, unit tests, schema validation, and domain-specific verification when applicable.
-- GitHub Actions is the canonical remote quality gate for this executable GitHub repository. Pull requests and pushes to the default branch must run the applicable lint/format, tests, type checks, container/build verification, repository invariants, and domain validators. Local and Docker checks are preflight evidence, not a substitute for the remote gate. Expected CI that is missing, unexpectedly skipped, pending, or failing blocks a remote-verification claim.
-- After changes, review the diff and run checks proportional to the change. If a required check cannot be run, report the reason.
-- Never output, commit, or transmit credentials, private keys, tokens, unnecessary personal data, or large proprietary asset corpora.
-- Do not deploy, delete data, change permissions, incur charges, force-push, or write to GitHub unless the user explicitly requested that external action.
+- Preserve the requested outcome, explicit constraints, and acceptance criteria.
+- Before changing durable product/system behavior, read the relevant `docs/specs/` or existing canonical requirement source; surface conflicts instead of silently choosing one side.
+- Treat tests, lint, builds, CI, evaluations, and inspections as evidence, not as substitutes for the requested outcome. Do not weaken checks merely to obtain a pass.
+- Keep changes minimal and preserve unrelated work. Do not default to destructive reset/clean/checkout or force push.
+- Never expose or commit secrets, private keys, tokens, or unnecessary personal data. Do not deploy, incur charges, delete data, change permissions, or write to external services unless explicitly authorized.
+- Read only the nearest instructions and the specifications, code, tests, and configuration needed for the task. Avoid purposeless repository-wide scans and large log dumps.
 
-## Standard workflow
+## Read only when relevant
 
-1. Define the outcome, constraints, acceptance criteria, and change boundary. Ask before implementation when material ambiguity remains.
-2. Read the relevant `docs/specs/`, code, tests, and configuration with evidence.
-3. Implement the smallest change that satisfies the task.
-4. Run proportionate local/Docker validation as preflight.
-5. For GitHub changes, verify the GitHub Actions result for the target commit or pull request.
-6. Map acceptance criteria to evidence and report only the change, verification result, and remaining risk.
+- Docker / GitHub Actions / Python-Ruff / shared specification layout: `docs/project-baseline.md`
+- task contracts / evaluation / optimization semantics: `docs/harness-architecture.md`
+- explicit GitHub remote operations: `skills/github-operations/SKILL.md`
+- unfamiliar cross-module repository investigation: `skills/repo-research/SKILL.md`
+- evaluated iterative agent/workflow optimization: `skills/self-improvement/SKILL.md`
+- substantial multi-stage or multi-session handoff: `skills/long-running-work/SKILL.md`
 
-## Project safety boundary
+## Model use
 
-The project is limited to authorized local APK/OBB/NPK compatibility analysis and asset restoration.
+- Default to `gpt-5.6-sol / medium` for implementation, architecture, debugging, review, and integration.
+- Use `gpt-5.6-luna / max` only for bounded extraction, mechanical transformation, limited exploration, or independent read-only checks.
+- Escalate to Sol when the work requires cross-cutting judgment or a bounded Luna attempt fails; do not repeat the same failed cheap path.
 
-- Do not bypass authentication, DRM, access controls, licensing restrictions, root protections, or application sandboxes.
-- Do not execute extracted payloads.
-- Treat `input/` as read-only source/provenance data. Never modify source artifacts in place.
-- Write every extraction to a new output directory. Do not silently overwrite or reuse an existing run.
-- Record source/tool/configuration identity and hashes needed to reproduce or audit a run.
-- Make unresolved work and partial success explicit. Required evaluation that is unresolved cannot be reported as `complete`.
-- Preserve the run status contract `complete` / `partial` / `failed` and the existing exit-code semantics where defined by the current specification.
-
-## Repository layout
-
-- `input/`: read-only source files and provenance manifests.
-- `output/`: generated runs, validation results, and legacy outputs.
-- `programs/`: maintained implementation and vendor references.
-- `development/`: plans, evidence, fixtures, schemas, tests, and work handoffs.
-- `docs/specs/`: canonical durable requirements and links to executable contracts.
-
-## Model and skill routing
-
-- Default implementation, design, debugging, review, and integration: `gpt-5.6-sol / medium`.
-- Use `gpt-5.6-luna / max` only for bounded candidate extraction, mechanical transformation, limited exploration, or independent read-only checks. Escalate to Sol instead of repeating a failed bounded attempt.
-- Add another model or routing branch only when the user requests it or repo-local evaluation shows a measurable improvement in quota use, speed, or quality.
-- `repo-research`: unfamiliar repository areas, complex dependencies, or external specifications.
-- `github-operations`: GitHub create/update/push/pull/Issue/PR work explicitly requested by the user.
-- `reverse-engineering`: authorized format analysis and evidence-driven compatibility work.
-- `long-running-work`: multi-stage or multi-session work requiring compact handoff and explicit partial state.
-- `self-improvement`: only when explicitly optimizing an agent/workflow against measurable outcomes; do not use it for ordinary extractor feature work.
-
-GitHub writes are never implied by ordinary local development instructions.
-
-## Validation proportionality
-
-- For small reversible changes, do not add tests that merely mirror the implementation.
-- Prioritize regression evidence for bugs, public APIs, persistence, authentication/authorization, concurrency, billing, and security-sensitive behavior.
-- Re-running the same validation without a material code/artifact/evidence change is not progress. Change strategy, surface the blocker, or gather new evidence instead.
+Shared files listed in `docs/harness-upstream.md` remain upstream-managed; change common rules in the canonical harness first.
