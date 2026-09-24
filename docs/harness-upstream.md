@@ -21,9 +21,14 @@ When a shared rule needs to change:
 - `AGENTS.md`
 - `docs/project-baseline.md`
 - `docs/harness-architecture.md`
+- `docs/testing-governance.md`
 - `skills/repo-research/SKILL.md`
 - `skills/github-operations/SKILL.md`
 - `skills/self-improvement/SKILL.md`
 - `skills/long-running-work/SKILL.md`
 - `templates/codex-progress.md`
 - `templates/project-specs/README.md`
+
+## Applied overlays
+
+- testing governance / Sol-Luna role split: `4e0ad32b680451610b3f601e982cc5b04956bf1b`
